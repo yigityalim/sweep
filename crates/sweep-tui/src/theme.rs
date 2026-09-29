@@ -11,43 +11,47 @@ impl Theme {
     }
 
     pub(crate) fn background(self) -> Color {
-        self.color(Color::Rgb(7, 10, 15))
+        self.color(Color::Rgb(16, 18, 20))
     }
 
     pub(crate) fn surface(self) -> Color {
-        self.color(Color::Rgb(13, 18, 26))
+        self.color(Color::Rgb(21, 23, 25))
     }
 
     pub(crate) fn surface_high(self) -> Color {
-        self.color(Color::Rgb(24, 34, 47))
+        self.color(Color::Rgb(43, 45, 48))
     }
 
     pub(crate) fn border(self) -> Color {
-        self.color(Color::Rgb(48, 59, 74))
+        self.color(Color::Rgb(43, 45, 48))
     }
 
     pub(crate) fn text(self) -> Color {
-        self.color(Color::Rgb(224, 231, 239))
+        self.color(Color::Rgb(215, 219, 224))
+    }
+
+    pub(crate) fn bright_text(self) -> Color {
+        self.color(Color::Rgb(240, 242, 244))
     }
 
     pub(crate) fn muted(self) -> Color {
-        self.color(Color::Rgb(126, 140, 158))
+        self.color(Color::Rgb(111, 118, 126))
     }
 
     pub(crate) fn accent(self) -> Color {
-        self.color(Color::Rgb(91, 169, 255))
+        self.color(Color::Rgb(142, 164, 199))
     }
 
     pub(crate) fn safe(self) -> Color {
-        self.color(Color::Rgb(87, 210, 138))
+        self.color(Color::Rgb(131, 169, 140))
     }
 
     pub(crate) fn review(self) -> Color {
-        self.color(Color::Rgb(241, 190, 83))
+        self.color(Color::Rgb(213, 178, 110))
     }
 
     pub(crate) fn protected(self) -> Color {
-        self.color(Color::Rgb(244, 105, 105))
+        self.color(Color::Rgb(212, 119, 119))
     }
 
     pub(crate) fn base(self) -> Style {
@@ -60,7 +64,7 @@ impl Theme {
 
     pub(crate) fn selected(self) -> Style {
         Style::default()
-            .fg(self.text())
+            .fg(self.bright_text())
             .bg(self.surface_high())
             .add_modifier(Modifier::BOLD)
     }
