@@ -9,11 +9,14 @@ use std::{
 
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
-use sweep_core::{Candidate, Decision, Plan};
+use sweep_core::{Candidate, Decision, FileIdentity, Plan};
 use sweep_report::{
     OutputFormat, Report, Snapshot, SnapshotDiffFormat, render, render_snapshot_diff,
 };
-use sweep_scan::{ScanOptions, classify_path, scan, scan_with_diagnostics};
+use sweep_scan::{
+    CandidateRevalidation, RevalidationReason, RevalidationStatus, ScanOptions, classify_path,
+    revalidate_plan, scan, scan_with_diagnostics,
+};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -116,6 +119,12 @@ enum Commands {
         #[arg(long)]
         output: Option<PathBuf>,
     },
+    /// Revalidate every target in a previously generated immutable plan.
+    Revalidate {
+        plan: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
     /// Inspect runtime prerequisites and platform assumptions.
     Doctor {
         #[arg(long)]
@@ -129,6 +138,23 @@ struct ScanOutput<'a> {
     candidates: &'a [Candidate],
     allocated_bytes_estimate: u64,
     logical_bytes: u64,
+}
+
+#[derive(Serialize)]
+struct PlanRevalidationOutput<'a> {
+    root: &'a Path,
+    plan_created_unix_seconds: u64,
+    all_unchanged: bool,
+    candidates: Vec<CandidateRevalidationOutput<'a>>,
+}
+
+#[derive(Serialize)]
+struct CandidateRevalidationOutput<'a> {
+    path: &'a Path,
+    status: &'static str,
+    reasons: Vec<String>,
+    observed_identity: Option<&'a FileIdentity>,
+    observed_subtree_fingerprint: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -177,6 +203,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             output,
         }) => run_diff(before, after, format.into(), output),
         Some(Commands::Plan { path, output }) => run_plan(path, output),
+        Some(Commands::Revalidate { plan, json }) => run_revalidate(plan, json),
         Some(Commands::Doctor { json }) => run_doctor(json),
     }
 }
@@ -429,6 +456,7 @@ fn run_plan(path: PathBuf, output: Option<PathBuf>) -> Result<(), Box<dyn std::e
     let root = path.canonicalize()?;
     let candidates = scan(&root, &ScanOptions::default())?;
     let plan = Plan::from_candidates(root, candidates);
+    plan.validate()?;
     let json = serde_json::to_string_pretty(&plan)?;
 
     if let Some(output) = output {
@@ -444,6 +472,114 @@ fn run_plan(path: PathBuf, output: Option<PathBuf>) -> Result<(), Box<dyn std::e
     }
 
     Ok(())
+}
+
+fn run_revalidate(plan_path: PathBuf, json: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = fs::read(&plan_path)?;
+    let plan: Plan = serde_json::from_slice(&bytes)?;
+    let result = revalidate_plan(&plan)?;
+
+    if json {
+        let output = PlanRevalidationOutput {
+            root: &result.root,
+            plan_created_unix_seconds: result.plan_created_unix_seconds,
+            all_unchanged: result.all_unchanged,
+            candidates: result
+                .candidates
+                .iter()
+                .map(candidate_revalidation_output)
+                .collect(),
+        };
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
+
+    println!("Sweep plan revalidation");
+    println!("  plan:       {}", plan_path.display());
+    println!("  root:       {}", result.root.display());
+    println!(
+        "  state:      {}",
+        if result.all_unchanged {
+            "unchanged"
+        } else {
+            "not ready"
+        }
+    );
+    println!();
+
+    if result.candidates.is_empty() {
+        println!("Plan contains no candidates.");
+        return Ok(());
+    }
+
+    println!("{:<13} PATH", "STATUS");
+    for candidate in &result.candidates {
+        println!(
+            "{:<13} {}",
+            revalidation_status_name(candidate.status),
+            candidate.path.display()
+        );
+        for reason in &candidate.reasons {
+            println!("  - {}", revalidation_reason_text(reason));
+        }
+    }
+
+    Ok(())
+}
+
+fn candidate_revalidation_output(
+    candidate: &CandidateRevalidation,
+) -> CandidateRevalidationOutput<'_> {
+    CandidateRevalidationOutput {
+        path: &candidate.path,
+        status: revalidation_status_name(candidate.status),
+        reasons: candidate
+            .reasons
+            .iter()
+            .map(revalidation_reason_text)
+            .collect(),
+        observed_identity: candidate.observed_identity.as_ref(),
+        observed_subtree_fingerprint: candidate.observed_subtree_fingerprint.as_deref(),
+    }
+}
+
+fn revalidation_status_name(status: RevalidationStatus) -> &'static str {
+    match status {
+        RevalidationStatus::Unchanged => "unchanged",
+        RevalidationStatus::Changed => "changed",
+        RevalidationStatus::Missing => "missing",
+        RevalidationStatus::Unverifiable => "unverifiable",
+    }
+}
+
+fn revalidation_reason_text(reason: &RevalidationReason) -> String {
+    match reason {
+        RevalidationReason::CandidateMissing => String::from("candidate no longer exists"),
+        RevalidationReason::CandidateBecameSymlink => {
+            String::from("candidate path is now a symlink")
+        }
+        RevalidationReason::PhysicalParentOutsideRoot => {
+            String::from("physical parent chain resolves outside the plan root")
+        }
+        RevalidationReason::PhysicalContainmentUnavailable(error) => {
+            format!("physical containment could not be proven: {error}")
+        }
+        RevalidationReason::IdentityChanged => {
+            String::from("filesystem identity no longer matches the plan")
+        }
+        RevalidationReason::IdentityUnavailable(error) => {
+            format!("filesystem identity could not be read: {error}")
+        }
+        RevalidationReason::TraversalIncomplete => {
+            String::from("subtree revalidation traversal was incomplete")
+        }
+        RevalidationReason::FingerprintUnavailable => {
+            String::from("subtree fingerprint could not be produced")
+        }
+        RevalidationReason::FingerprintChanged => {
+            String::from("subtree metadata fingerprint no longer matches the plan")
+        }
+    }
 }
 
 fn run_doctor(json: bool) -> Result<(), Box<dyn std::error::Error>> {

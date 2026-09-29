@@ -363,8 +363,9 @@ Implementation order:
 3. snapshot/diff and growth model;
 4. TUI on top of the report model;
 5. immutable plan revalidation;
-6. mutation engine;
-7. measured reclamation history;
-8. optional budgets and launchd scheduling.
+6. TUI plan-revalidation integration;
+7. mutation engine;
+8. measured reclamation history;
+9. optional budgets and launchd scheduling.
 
 Homebrew, Docker, simulator runtimes, Playwright browsers, IDE/agent caches, and other stateful providers should be added only when their owner/liveness contracts are understood. Provider count is not a success metric.
