@@ -745,6 +745,53 @@ impl App {
         Ok(())
     }
 
+    fn handle_command_family_key(&mut self, key: KeyEvent) -> bool {
+        let Some(family) = self.pending_family else {
+            return false;
+        };
+
+        self.pending_family = None;
+
+        match key.code {
+            KeyCode::Esc => {}
+            KeyCode::Char('y') if family == CommandFamily::Yank => {
+                self.copy_current_report(OutputFormat::Text);
+            }
+            KeyCode::Char('p') if family == CommandFamily::Yank => {
+                self.copy_selected_path();
+            }
+            KeyCode::Char('m') if family == CommandFamily::Yank => {
+                self.copy_current_report(OutputFormat::Markdown);
+            }
+            KeyCode::Char('j') if family == CommandFamily::Yank => {
+                self.copy_current_report(OutputFormat::Json);
+            }
+            KeyCode::Char('t') if family == CommandFamily::Yank => {
+                self.copy_current_report(OutputFormat::Toml);
+            }
+            KeyCode::Char('y') if family == CommandFamily::Save => {
+                self.save_current_report(OutputFormat::Text);
+            }
+            KeyCode::Char('m') if family == CommandFamily::Save => {
+                self.save_current_report(OutputFormat::Markdown);
+            }
+            KeyCode::Char('j') if family == CommandFamily::Save => {
+                self.save_current_report(OutputFormat::Json);
+            }
+            KeyCode::Char('t') if family == CommandFamily::Save => {
+                self.save_current_report(OutputFormat::Toml);
+            }
+            _ => {
+                self.status_message = Some(format!(
+                    "Unknown {} command. Press ? for the keymap.",
+                    family.label().to_lowercase()
+                ));
+            }
+        }
+
+        true
+    }
+
     fn handle_drawer_key(&mut self, key: KeyEvent) -> bool {
         let Some(drawer) = self.drawer.clone() else {
             return false;
@@ -775,26 +822,63 @@ impl App {
         };
 
         match overlay {
-            Overlay::Palette => match key.code {
-                KeyCode::Esc => self.overlay = None,
-                KeyCode::Char('j') | KeyCode::Down => {
-                    self.palette_index = (self.palette_index + 1).min(PaletteAction::ALL.len() - 1);
+            Overlay::Palette => {
+                let visible = self.visible_palette_actions();
+                match key.code {
+                    KeyCode::Esc => self.overlay = None,
+                    KeyCode::Down => {
+                        if !visible.is_empty() {
+                            self.palette_index =
+                                (self.palette_index + 1).min(visible.len() - 1);
+                        }
+                    }
+                    KeyCode::Up => {
+                        self.palette_index = self.palette_index.saturating_sub(1);
+                    }
+                    KeyCode::Home => self.palette_index = 0,
+                    KeyCode::End => {
+                        self.palette_index = visible.len().saturating_sub(1);
+                    }
+                    KeyCode::Backspace => {
+                        self.palette_query.pop();
+                        self.palette_index = 0;
+                    }
+                    KeyCode::Enter => {
+                        if let Some(action) = visible.get(self.palette_index).copied() {
+                            self.overlay = None;
+                            self.execute_palette_action(action)?;
+                        }
+                    }
+                    KeyCode::Char(character)
+                        if !key
+                            .modifiers
+                            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                    {
+                        self.palette_query.push(character);
+                        self.palette_index = 0;
+                    }
+                    _ => {}
                 }
-                KeyCode::Char('k') | KeyCode::Up => {
-                    self.palette_index = self.palette_index.saturating_sub(1);
-                }
-                KeyCode::Home => self.palette_index = 0,
-                KeyCode::End => self.palette_index = PaletteAction::ALL.len() - 1,
-                KeyCode::Enter => {
-                    let action = PaletteAction::ALL[self.palette_index];
-                    self.overlay = None;
-                    self.execute_palette_action(action)?;
-                }
+            }
+            Overlay::Help => match key.code {
+                KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?') => self.overlay = None,
                 _ => {}
             },
-            Overlay::Help | Overlay::Inspect => match key.code {
+            Overlay::Inspect => match key.code {
                 KeyCode::Esc | KeyCode::Enter => self.overlay = None,
-                KeyCode::Char('?') if overlay == Overlay::Help => self.overlay = None,
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.inspect_scroll = self.inspect_scroll.saturating_add(1);
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.inspect_scroll = self.inspect_scroll.saturating_sub(1);
+                }
+                KeyCode::PageDown => {
+                    self.inspect_scroll = self.inspect_scroll.saturating_add(8);
+                }
+                KeyCode::PageUp => {
+                    self.inspect_scroll = self.inspect_scroll.saturating_sub(8);
+                }
+                KeyCode::Home => self.inspect_scroll = 0,
                 _ => {}
             },
             Overlay::PathInput => {}
@@ -823,9 +907,14 @@ impl App {
                         Some(String::from("Open Browse first to choose a directory."));
                 }
             }
+            PaletteAction::SaveText => self.save_current_report(OutputFormat::Text),
             PaletteAction::SaveMarkdown => self.save_current_report(OutputFormat::Markdown),
             PaletteAction::SaveJson => self.save_current_report(OutputFormat::Json),
-            PaletteAction::CopyText => self.copy_current_report(),
+            PaletteAction::SaveToml => self.save_current_report(OutputFormat::Toml),
+            PaletteAction::CopyText => self.copy_current_report(OutputFormat::Text),
+            PaletteAction::CopyMarkdown => self.copy_current_report(OutputFormat::Markdown),
+            PaletteAction::CopyJson => self.copy_current_report(OutputFormat::Json),
+            PaletteAction::CopyToml => self.copy_current_report(OutputFormat::Toml),
             PaletteAction::OpenBrowse => self.set_view(View::Browse),
             PaletteAction::OpenGrowth => self.set_view(View::Growth),
             PaletteAction::OpenHistory => self.set_view(View::History),
