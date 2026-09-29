@@ -29,12 +29,16 @@ pub(crate) fn list_directory(path: &Path) -> io::Result<Vec<BrowseEntry>> {
     let mut entries = Vec::new();
 
     for entry in fs::read_dir(path)? {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
+        let Ok(entry) = entry else {
+            continue;
+        };
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
         let is_dir = file_type.is_dir();
         let is_symlink = file_type.is_symlink();
         let bytes = if file_type.is_file() {
-            Some(entry.metadata()?.len())
+            entry.metadata().ok().map(|metadata| metadata.len())
         } else {
             None
         };
