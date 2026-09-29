@@ -2,6 +2,7 @@
 members = [
     "crates/sweep-cli",
     "crates/sweep-core",
+    "crates/sweep-report",
     "crates/sweep-scan",
 ]
 resolver = "2"
@@ -25,6 +26,7 @@ serde_json = "1"
 tempfile = "3"
 
 sweep-core = { path = "crates/sweep-core" }
+sweep-report = { path = "crates/sweep-report" }
 sweep-scan = { path = "crates/sweep-scan" }
 
 [profile.release]

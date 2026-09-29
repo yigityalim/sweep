@@ -7,6 +7,7 @@ Sweep is a macOS-first CLI that identifies developer-generated data only when it
 ```console
 sw scan ~/Developer
 sw explain ~/Developer/project/target
+sw report ~/Developer --format markdown
 sw plan ~/Developer
 sw doctor
 ```
@@ -29,6 +30,8 @@ The current repository implements the non-destructive foundation:
 - Git ownership evidence;
 - protected-artifact detection;
 - immutable plan generation;
+- versioned text, Markdown, JSON, and TOML reports;
+- macOS clipboard and Downloads export;
 - machine-readable JSON;
 - incident-driven regression tests.
 
@@ -74,6 +77,22 @@ sw explain ./node_modules --json
 ```
 
 `explain` prints the evidence chain for one path. Unsupported or ambiguous paths are protected rather than guessed.
+
+### Report
+
+```console
+sw report ~/Developer
+sw report ~/Developer --format markdown
+sw report ~/Developer --format json --copy
+sw report ~/Developer --format toml --save
+sw report ~/Developer --format markdown --redact-home
+```
+
+`report` renders the same canonical storage model as text, Markdown, JSON, or TOML. Reports contain explicit decision counts and allocated-size estimates; they never relabel estimates as guaranteed reclaimable capacity.
+
+`--copy` writes the report to the macOS clipboard. `--save` writes a timestamped file into `~/Downloads`. `--output <path>` writes atomically to a chosen location. `--redact-home` replaces the current home-directory prefix with `~` for shareable reports.
+
+The report schema is versioned independently from deletion plans so future snapshots and diffs can remain read-only data rather than mutation authority.
 
 ### Plan
 
@@ -193,7 +212,7 @@ immutable plan
 
 Scanners do not mutate. Rules do not mutate. Plans do not mutate. The future mutation engine will not be allowed to discover new targets.
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/SAFETY_MODEL.md`](docs/SAFETY_MODEL.md).
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/SAFETY_MODEL.md`](docs/SAFETY_MODEL.md), and [`docs/INTERACTION_MODEL.md`](docs/INTERACTION_MODEL.md).
 
 ## Development
 

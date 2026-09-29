@@ -26,6 +26,10 @@ Do not broaden Sweep into a generic macOS cleaner, app uninstaller, system optim
 14. Nested repositories block automatic deletion.
 15. Reported allocated size is an estimate on filesystems with shared extents.
 16. Reclaimed bytes are measured after mutation rather than inferred from pre-delete sums.
+17. Reports and imported snapshots are descriptive data and never authorize mutation.
+18. Report formats must label allocated bytes as estimates and must not call them guaranteed reclaimable bytes.
+19. Home-directory redaction changes presentation only; it must never affect filesystem identity or classification.
+20. Clipboard, export, TUI, and future GUI surfaces must consume the same versioned report model.
 
 ## Rust rules
 
@@ -57,4 +61,4 @@ If any required evidence cannot be obtained, classify as `review` or `protected`
 
 ## Review priority
 
-Changes touching classification, identity, plan serialization, symlink behavior, Git ownership, or future mutation code require line-by-line safety review.
+Changes touching classification, identity, plan serialization, report schema, path redaction, symlink behavior, Git ownership, or future mutation code require line-by-line safety review.

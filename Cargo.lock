@@ -466,6 +466,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sweep-core",
+ "sweep-report",
  "sweep-scan",
 ]
 
@@ -474,6 +475,15 @@ name = "sweep-core"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "sweep-report"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sweep-core",
 ]
 
 [[package]]
