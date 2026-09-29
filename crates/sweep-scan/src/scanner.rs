@@ -54,10 +54,7 @@ pub fn scan(root: &Path, options: &ScanOptions) -> Result<Vec<Candidate>, ScanEr
     Ok(scan_with_diagnostics(root, options)?.candidates)
 }
 
-pub fn scan_with_diagnostics(
-    root: &Path,
-    options: &ScanOptions,
-) -> Result<ScanResult, ScanError> {
+pub fn scan_with_diagnostics(root: &Path, options: &ScanOptions) -> Result<ScanResult, ScanError> {
     let root = root
         .canonicalize()
         .map_err(|error| ScanError::InvalidRoot(root.to_path_buf(), error))?;
