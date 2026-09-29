@@ -1127,6 +1127,7 @@ name = "sweep-tui"
 version = "0.1.0"
 dependencies = [
  "ratatui",
+ "serde_json",
  "sweep-report",
  "sweep-scan",
  "tachyonfx",
