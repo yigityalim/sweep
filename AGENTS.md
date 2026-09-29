@@ -38,6 +38,9 @@ Do not broaden Sweep into a generic macOS cleaner, app uninstaller, system optim
 26. Finder reveal, report export, clipboard, navigation, and action-palette commands never alter classification or deletion authority.
 27. TUI range selection, bulk selection, selected-only views, and clean-preview item toggles are presentation state only; they cannot promote review/protected candidates into an eligible plan.
 28. Preview receipts may exist only in memory for the current TUI session. They must never be persisted as cleanup history and must never claim reclaimed bytes or successful mutation.
+29. New snapshot candidate records must not persist absolute candidate paths; relative-to-root paths are sufficient for historical comparison.
+30. A candidate outside the declared snapshot root must never be rewritten into an absolute-looking relative path. It must be excluded and the snapshot marked incomplete.
+31. Default snapshot creation must not overwrite an existing snapshot path on timestamp collision.
 
 ## Rust rules
 
