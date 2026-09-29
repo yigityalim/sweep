@@ -42,6 +42,9 @@ Do not broaden Sweep into a generic macOS cleaner, app uninstaller, system optim
 30. A candidate outside the declared snapshot root must never be rewritten into an absolute-looking relative path. It must be excluded and the snapshot marked incomplete.
 31. Default snapshot creation must not overwrite an existing snapshot path on timestamp collision.
 32. An ancestor Node lockfile proves recovery only when the package's workspace membership is independently proven; repository ancestry alone is insufficient.
+33. An immutable plan must validate before persistence or revalidation: every target must be safe, root-contained, traversal-complete, identity-bound, fingerprint-bound, and recoverable.
+34. Plan revalidation may inspect only targets already present in the plan. It must never discover, classify, add, replace, or broaden targets.
+35. Any identity mismatch, subtree fingerprint mismatch, symlink replacement, missing target, containment failure, or unverifiable state prevents that candidate from being considered unchanged.
 
 ## Rust rules
 
