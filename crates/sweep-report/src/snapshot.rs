@@ -432,18 +432,19 @@ fn diff_snapshots(before: &Snapshot, after: &Snapshot) -> SnapshotDiff {
             continue;
         };
 
-        let mut matching_after = after
-            .candidates
-            .iter()
-            .enumerate()
-            .filter(|(index, candidate)| {
-                !after_matched[*index]
-                    && candidate.kind == before_candidate.kind
-                    && candidate.identity == Some(identity)
-                    && before_candidate.subtree_metadata_fingerprint.is_some()
-                    && candidate.subtree_metadata_fingerprint
-                        == before_candidate.subtree_metadata_fingerprint
-            });
+        let mut matching_after =
+            after
+                .candidates
+                .iter()
+                .enumerate()
+                .filter(|(index, candidate)| {
+                    !after_matched[*index]
+                        && candidate.kind == before_candidate.kind
+                        && candidate.identity == Some(identity)
+                        && before_candidate.subtree_metadata_fingerprint.is_some()
+                        && candidate.subtree_metadata_fingerprint
+                            == before_candidate.subtree_metadata_fingerprint
+                });
 
         let Some((after_index, after_candidate)) = matching_after.next() else {
             continue;
