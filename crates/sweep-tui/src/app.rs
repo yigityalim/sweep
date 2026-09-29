@@ -287,6 +287,7 @@ impl App {
             diff: None,
             snapshot_count: 0,
             invalid_snapshot_count: 0,
+            live_comparison: false,
             message: format!("Could not load snapshots: {error}"),
         });
 
@@ -1528,11 +1529,7 @@ fn clamp_table_selection(state: &mut TableState, len: usize) {
 
 #[cfg(test)]
 mod tests {
-    use sweep_core::{CandidateKind, Decision};
-    use sweep_report::{
-        AddedCandidate, REPORT_SCHEMA_VERSION, ReportEvidence, ReportRecovery, ReportSummary,
-        SnapshotDiffSummary,
-    };
+    use sweep_report::{REPORT_SCHEMA_VERSION, ReportEvidence, ReportRecovery, ReportSummary};
 
     use super::*;
 
@@ -1634,47 +1631,50 @@ mod tests {
 
     #[test]
     fn live_growth_maps_changed_added_and_unchanged_candidates() {
-        let diff = SnapshotDiff {
-            schema_version: 1,
-            root: String::from("/tmp"),
-            from_created_unix_seconds: 1,
-            to_created_unix_seconds: 2,
-            complete: true,
-            summary: SnapshotDiffSummary {
-                before_allocated_bytes_estimate: 100,
-                after_allocated_bytes_estimate: 180,
-                allocated_bytes_estimate_delta: ByteDelta {
-                    direction: DeltaDirection::Increased,
-                    bytes: 80,
+        let diff: SnapshotDiff = serde_json::from_str(
+            r#"{
+                "schema_version": 1,
+                "root": "/tmp",
+                "from_created_unix_seconds": 1,
+                "to_created_unix_seconds": 2,
+                "complete": true,
+                "summary": {
+                    "before_allocated_bytes_estimate": 100,
+                    "after_allocated_bytes_estimate": 180,
+                    "allocated_bytes_estimate_delta": {
+                        "direction": "increased",
+                        "bytes": 80
+                    },
+                    "added_count": 1,
+                    "removed_count": 0,
+                    "changed_count": 1,
+                    "moved_count": 0
                 },
-                added_count: 1,
-                removed_count: 0,
-                changed_count: 1,
-                moved_count: 0,
-            },
-            added: vec![AddedCandidate {
-                relative_path: String::from("new/target"),
-                kind: CandidateKind::RustTarget,
-                decision: Decision::Safe,
-                allocated_bytes_estimate: 50,
-            }],
-            removed: Vec::new(),
-            changed: vec![sweep_report::ChangedCandidate {
-                relative_path: String::from("changed/target"),
-                kind: CandidateKind::RustTarget,
-                before_decision: Decision::Safe,
-                after_decision: Decision::Safe,
-                before_allocated_bytes_estimate: 20,
-                after_allocated_bytes_estimate: 50,
-                allocated_bytes_estimate_delta: ByteDelta {
-                    direction: DeltaDirection::Increased,
-                    bytes: 30,
-                },
-                fingerprint_changed: true,
-                traversal_complete_changed: false,
-            }],
-            moved: Vec::new(),
-        };
+                "added": [{
+                    "relative_path": "new/target",
+                    "kind": "rust_target",
+                    "decision": "safe",
+                    "allocated_bytes_estimate": 50
+                }],
+                "removed": [],
+                "changed": [{
+                    "relative_path": "changed/target",
+                    "kind": "rust_target",
+                    "before_decision": "safe",
+                    "after_decision": "safe",
+                    "before_allocated_bytes_estimate": 20,
+                    "after_allocated_bytes_estimate": 50,
+                    "allocated_bytes_estimate_delta": {
+                        "direction": "increased",
+                        "bytes": 30
+                    },
+                    "fingerprint_changed": true,
+                    "traversal_complete_changed": false
+                }],
+                "moved": []
+            }"#,
+        )
+        .unwrap();
 
         assert_eq!(
             growth_delta_for(&diff, "changed/target", "cargo-target"),
