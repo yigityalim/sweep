@@ -1,5 +1,5 @@
 [package]
-name = "sweep-cli"
+name = "sweep-tui"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,15 +8,8 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 
-[[bin]]
-name = "sw"
-path = "src/main.rs"
-
 [dependencies]
-clap.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-sweep-core.workspace = true
+ratatui.workspace = true
 sweep-report.workspace = true
 sweep-scan.workspace = true
-sweep-tui.workspace = true
+tachyonfx.workspace = true

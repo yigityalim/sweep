@@ -4,13 +4,14 @@ members = [
     "crates/sweep-core",
     "crates/sweep-report",
     "crates/sweep-scan",
+    "crates/sweep-tui",
 ]
 resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/yigityalim/sweep"
 homepage = "https://github.com/yigityalim/sweep"
@@ -21,13 +22,16 @@ blake3 = "1.8.7"
 clap = { version = "4.6.7", features = ["derive"] }
 ignore = "0.4.33"
 rayon = "1.11"
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm", "layout-cache", "macros"] }
 serde = { version = "1", features = ["derive"] }
+tachyonfx = { version = "0.25.2", default-features = false, features = ["std"] }
 serde_json = "1"
 tempfile = "3"
 
 sweep-core = { path = "crates/sweep-core" }
 sweep-report = { path = "crates/sweep-report" }
 sweep-scan = { path = "crates/sweep-scan" }
+sweep-tui = { path = "crates/sweep-tui" }
 
 [profile.release]
 codegen-units = 1

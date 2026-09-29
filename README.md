@@ -5,6 +5,7 @@
 Sweep is a macOS-first CLI that identifies developer-generated data only when it can explain why the data is reproducible. The executable is `sw`.
 
 ```console
+sw
 sw scan ~/Developer
 sw explain ~/Developer/project/target
 sw report ~/Developer --format markdown
@@ -35,6 +36,7 @@ The current repository implements the non-destructive foundation:
 - versioned text, Markdown, JSON, and TOML reports;
 - macOS clipboard and Downloads export;
 - machine-readable JSON;
+- interactive Ratatui dashboard with background scanning, search, filters, evidence inspection, and restrained terminal animation;
 - incident-driven regression tests.
 
 **No command in the current version deletes files.**
@@ -61,6 +63,16 @@ Developer machines accumulate large quantities of reproducible state:
 General-purpose cleaners frequently mix this with application state, user content, credentials, session data, or shared runtime state. Sweep deliberately narrows the problem to developer storage and models uncertainty explicitly.
 
 ## Commands
+
+### Interactive TUI
+
+```console
+sw
+```
+
+Running `sw` without a subcommand opens the read-only interactive dashboard. It scans `~/Developer` when that directory exists and otherwise uses the current directory. The TUI provides keyboard navigation, live search, decision filters, sort modes, evidence inspection, background rescans, responsive layouts, `NO_COLOR` support, and an ASCII mode through `SWEEP_ASCII=1`.
+
+The TUI is a report surface only. Selection and animation do not authorize mutation.
 
 ### Scan
 
@@ -255,7 +267,7 @@ Normal development:
 cargo run -p sweep-cli -- scan ~/Developer
 ```
 
-The workspace uses Rust 2024 edition and pins the repository toolchain while keeping the package MSRV at the Rust 2024 baseline.
+The workspace uses Rust 2024 edition, pins Rust 1.98.1 for repository development, and declares Rust 1.88 as the package MSRV for the current Ratatui stack.
 
 ## Release
 

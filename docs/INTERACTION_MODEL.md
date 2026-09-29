@@ -41,7 +41,8 @@ The interaction model intentionally borrows proven ideas without copying another
 - Yazi and Lazygit: discoverable multi-key command families, search/filter, range selection, copy/open actions, contextual menus;
 - diskonaut: session-level accounting of space freed;
 - kondo: project-age filtering and dry-run workflows;
-- Ratatui/Crossterm: the future native Rust TUI foundation.
+- Ratatui/Crossterm: the native Rust TUI foundation;
+- TachyonFX: presentation-only terminal transitions layered after semantic widgets render.
 
 ## Canonical report
 
@@ -70,9 +71,9 @@ A report is descriptive and can never authorize mutation.
 
 Imported reports and snapshots are permanently read-only. A live rescan must produce a new plan before any cleanup action is possible.
 
-## TUI target
+## TUI
 
-Running `sw` without a subcommand should eventually open the TUI.
+Running `sw` without a subcommand opens the TUI.
 
 Main view:
 
