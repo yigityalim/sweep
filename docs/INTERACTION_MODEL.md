@@ -182,7 +182,9 @@ s t            save TOML report
 
 The inspect overlay is scrollable with `j/k`, arrow keys, and page up/down. Its evidence summary reports proven/unknown/refuted counts without reinterpreting classification.
 
-Growth uses the latest valid snapshot for the exact current scope as a baseline once a live scan completes. The Candidates table shows a `Δ SNAPSHOT` column and can sort by growth; the inspector shows the selected candidate's live delta. Before a live scan exists, the Growth view can still compare the latest two valid snapshots. Invalid snapshots are ignored with an explicit count. History is an empty preview surface until a mutation engine can produce measured cleanup receipts.
+Growth uses the latest valid snapshot for the exact current scope as a baseline once a live scan completes. The Candidates table shows a `Δ SNAPSHOT` column and can sort by growth; the inspector shows the selected candidate's live delta. Before a live scan exists, the Growth view can still compare the latest two valid snapshots. Invalid snapshots are ignored with an explicit count.
+
+History now has two intentionally separate concepts. During preview-only development, confirming a clean preview creates a volatile in-memory session receipt so the future history UX can be exercised. It records the preview scope, enabled safe candidates, excluded count, paths, timestamp, and allocated-size estimate. It is never written to disk and is clearly labeled `NO FILES CHANGED`. Persistent cleanup history remains reserved for a future mutation engine that can record revalidation, mutation outcome, and measured reclaimed bytes.
 
 Option-left / option-right traverses scan-scope history. Changing scope always starts a fresh live scan.
 

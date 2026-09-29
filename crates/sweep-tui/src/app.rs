@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     sync::mpsc::{self, Receiver, TryRecvError},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use ratatui::{
@@ -259,6 +259,16 @@ pub(crate) enum Drawer {
 }
 
 #[derive(Clone, Debug)]
+pub(crate) struct PreviewReceipt {
+    pub(crate) created_unix_seconds: u64,
+    pub(crate) scope: String,
+    pub(crate) safe_count: usize,
+    pub(crate) excluded_count: usize,
+    pub(crate) allocated_bytes_estimate: u64,
+    pub(crate) paths: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
 struct RangeSelection {
     anchor_path: String,
     baseline: BTreeSet<String>,
@@ -279,6 +289,7 @@ pub(crate) struct App {
     pub(crate) report: Option<Report>,
     pub(crate) table_state: TableState,
     pub(crate) browse_state: TableState,
+    pub(crate) history_state: TableState,
     pub(crate) browse_path: PathBuf,
     pub(crate) browse_entries: Vec<BrowseEntry>,
     pub(crate) browse_error: Option<String>,
@@ -297,6 +308,7 @@ pub(crate) struct App {
     pub(crate) inspect_scroll: u16,
     pub(crate) pending_family: Option<CommandFamily>,
     pub(crate) selected_paths: BTreeSet<String>,
+    pub(crate) preview_history: Vec<PreviewReceipt>,
     pub(crate) selected_only: bool,
     pub(crate) range_selecting: bool,
     range_selection: Option<RangeSelection>,
@@ -337,6 +349,7 @@ impl App {
             report: None,
             table_state: TableState::default(),
             browse_state: TableState::default(),
+            history_state: TableState::default(),
             browse_path: root.clone(),
             browse_entries: Vec::new(),
             browse_error: None,
@@ -355,6 +368,7 @@ impl App {
             inspect_scroll: 0,
             pending_family: None,
             selected_paths: BTreeSet::new(),
+            preview_history: Vec::new(),
             selected_only: false,
             range_selecting: false,
             range_selection: None,
@@ -486,6 +500,11 @@ impl App {
         let selected = self.browse_state.selected()?;
         let index = *indices.get(selected)?;
         self.browse_entries.get(index)
+    }
+
+    pub(crate) fn selected_preview_receipt(&self) -> Option<&PreviewReceipt> {
+        let selected = self.history_state.selected()?;
+        self.preview_history.get(selected)
     }
 
     pub(crate) fn root_label(&self) -> String {
@@ -739,7 +758,11 @@ impl App {
         match self.view {
             View::Candidates => self.on_candidate_key(key),
             View::Browse => self.on_browse_key(key),
-            View::Growth | View::History => Ok(()),
+            View::History => {
+                self.on_history_key(key);
+                Ok(())
+            }
+            View::Growth => Ok(()),
         }
     }
 
@@ -804,6 +827,25 @@ impl App {
             _ => {}
         }
         Ok(())
+    }
+
+    fn on_history_key(&mut self, key: KeyEvent) {
+        let len = self.preview_history.len();
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                move_table_selection(&mut self.history_state, len, 1);
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                move_table_selection(&mut self.history_state, len, -1);
+            }
+            KeyCode::Home | KeyCode::Char('g') => {
+                select_first(&mut self.history_state, len);
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                select_last(&mut self.history_state, len);
+            }
+            _ => {}
+        }
     }
 
     fn on_search_key(&mut self, key: KeyEvent) {
@@ -965,9 +1007,11 @@ impl App {
                             Some(String::from("Enable at least one safe candidate first."));
                         self.drawer = Some(Drawer::CleanPlan(plan));
                     } else {
+                        self.record_preview_receipt(&plan);
                         self.drawer = Some(Drawer::PreviewReceipt(plan));
-                        self.status_message =
-                            Some(String::from("Preview complete. No files were changed."));
+                        self.status_message = Some(String::from(
+                            "Preview complete. No files were changed. Added to session preview history.",
+                        ));
                     }
                 }
                 _ => {}
@@ -1116,7 +1160,7 @@ impl App {
                 self.clamp_browse_selection();
             }
             View::Growth => self.reload_growth(),
-            View::History => {}
+            View::History => self.clamp_history_selection(),
         }
     }
 
@@ -1277,6 +1321,18 @@ impl App {
                 self.status_message = Some(format!("Clipboard copy failed: {error}"));
             }
         }
+    }
+
+    fn record_preview_receipt(&mut self, plan: &CleanPlan) {
+        let created_unix_seconds = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let receipt = preview_receipt_from_plan(self.root_label(), plan, created_unix_seconds);
+
+        self.preview_history.push(receipt);
+        self.history_state
+            .select(self.preview_history.len().checked_sub(1));
     }
 
     fn open_clean_preview(&mut self) {
@@ -1571,6 +1627,32 @@ impl App {
     fn clamp_browse_selection(&mut self) {
         let len = self.visible_browse_indices().len();
         clamp_table_selection(&mut self.browse_state, len);
+    }
+
+    fn clamp_history_selection(&mut self) {
+        clamp_table_selection(&mut self.history_state, self.preview_history.len());
+    }
+}
+
+fn preview_receipt_from_plan(
+    scope: String,
+    plan: &CleanPlan,
+    created_unix_seconds: u64,
+) -> PreviewReceipt {
+    let paths = plan
+        .included
+        .iter()
+        .filter(|candidate| plan.is_enabled(candidate))
+        .map(|candidate| candidate.path.clone())
+        .collect();
+
+    PreviewReceipt {
+        created_unix_seconds,
+        scope,
+        safe_count: plan.enabled_count(),
+        excluded_count: plan.excluded.len(),
+        allocated_bytes_estimate: plan.allocated_bytes_estimate(),
+        paths,
     }
 }
 
@@ -2006,6 +2088,30 @@ mod tests {
         plan.enabled_paths.insert(first);
         assert_eq!(plan.enabled_count(), 2);
         assert_eq!(plan.allocated_bytes_estimate(), 30);
+    }
+
+    #[test]
+    fn preview_receipt_contains_only_enabled_safe_paths() {
+        let data = report(vec![
+            candidate("~/Developer/a/target", "safe", 10),
+            candidate("~/Developer/b/target", "safe", 20),
+            candidate("~/Developer/c/target", "review", 30),
+        ]);
+        let selected = data
+            .candidates
+            .iter()
+            .map(|candidate| candidate.path.clone())
+            .collect();
+        let mut plan = build_clean_plan(&data, &selected, None).unwrap();
+        plan.enabled_paths.remove("~/Developer/a/target");
+
+        let receipt = preview_receipt_from_plan(String::from("~/Developer"), &plan, 42);
+
+        assert_eq!(receipt.created_unix_seconds, 42);
+        assert_eq!(receipt.safe_count, 1);
+        assert_eq!(receipt.excluded_count, 1);
+        assert_eq!(receipt.allocated_bytes_estimate, 20);
+        assert_eq!(receipt.paths, vec![String::from("~/Developer/b/target")]);
     }
 
     #[test]
