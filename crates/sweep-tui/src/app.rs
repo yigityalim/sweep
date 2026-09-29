@@ -552,7 +552,7 @@ impl App {
             KeyCode::Char('4') => self.set_view(View::History),
             KeyCode::Tab => self.set_view(self.view.next()),
             KeyCode::Char('o') => self.reveal_selected(),
-            KeyCode::Char('c') => self.open_clean_preview(),
+            KeyCode::Char('c') if self.view == View::Candidates => self.open_clean_preview(),
             KeyCode::Char('R') => {
                 if self.view == View::Growth {
                     self.reload_growth();
@@ -560,7 +560,9 @@ impl App {
                     self.start_scan()?;
                 }
             }
-            KeyCode::Char('/') => {
+            KeyCode::Char('/')
+                if matches!(self.view, View::Candidates | View::Browse) =>
+            {
                 self.query.clear();
                 self.input_mode = InputMode::Search;
             }
