@@ -857,7 +857,10 @@ fn render_history(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme
             ),
             field(
                 "would target",
-                &format!("{} estimate", format_bytes(receipt.allocated_bytes_estimate)),
+                &format!(
+                    "{} estimate",
+                    format_bytes(receipt.allocated_bytes_estimate)
+                ),
                 Style::default().fg(theme.bright_text()),
                 theme,
             ),
@@ -891,16 +894,14 @@ fn render_history(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme
     };
 
     frame.render_widget(
-        Paragraph::new(detail)
-            .wrap(Wrap { trim: false })
-            .block(
-                Block::default()
-                    .title(" detail ")
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(theme.border()))
-                    .style(theme.panel()),
-            ),
+        Paragraph::new(detail).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .title(" detail ")
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(theme.border()))
+                .style(theme.panel()),
+        ),
         body[1],
     );
 }
