@@ -32,12 +32,27 @@ Observation layer:
 
 It returns `Candidate` values and never mutates candidate paths.
 
+### `sweep-report`
+
+Versioned presentation model:
+
+- canonical report schema;
+- summary accounting;
+- path redaction;
+- text rendering;
+- Markdown rendering;
+- JSON rendering;
+- TOML rendering.
+
+Reports are descriptive snapshots. They do not carry deletion authority and cannot mutate candidate paths.
+
 ### `sweep-cli`
 
 Presentation and command routing:
 
 - `scan`;
 - `explain`;
+- `report`;
 - `plan`;
 - `doctor`.
 
@@ -132,3 +147,26 @@ A plan stores:
 A future apply operation will reject a candidate when either its root identity or its subtree metadata fingerprint no longer matches the plan.
 
 This closes the common "scan one object, delete another object later at the same path" class of race.
+
+
+## Report and interaction model
+
+Report generation is deliberately separate from planning.
+
+```text
+Candidate[]
+    |
+    v
+Report v1
+    |
+    +-- text
+    +-- Markdown
+    +-- JSON
+    +-- TOML
+    +-- clipboard
+    +-- file export
+```
+
+A report may be persisted, copied, shared, imported by future tooling, or compared with another report. It must never become proof that the current filesystem still matches the report. Imported reports and future snapshots are read-only by definition.
+
+The interactive UI will consume the same report model instead of inventing a second presentation schema. See `docs/INTERACTION_MODEL.md`.

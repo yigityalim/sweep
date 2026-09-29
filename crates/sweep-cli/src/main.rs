@@ -7,9 +7,10 @@ use std::{
     process::{Command, ExitCode, Stdio},
 };
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use sweep_core::{Candidate, Decision, Plan};
+use sweep_report::{OutputFormat, Report, render};
 use sweep_scan::{ScanOptions, classify_path, scan};
 
 #[derive(Parser, Debug)]
@@ -22,6 +23,25 @@ use sweep_scan::{ScanOptions, classify_path, scan};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum ReportFormatArg {
+    Text,
+    Markdown,
+    Json,
+    Toml,
+}
+
+impl From<ReportFormatArg> for OutputFormat {
+    fn from(value: ReportFormatArg) -> Self {
+        match value {
+            ReportFormatArg::Text => Self::Text,
+            ReportFormatArg::Markdown => Self::Markdown,
+            ReportFormatArg::Json => Self::Json,
+            ReportFormatArg::Toml => Self::Toml,
+        }
+    }
 }
 
 #[derive(Subcommand, Debug)]
@@ -38,6 +58,21 @@ enum Commands {
         path: PathBuf,
         #[arg(long)]
         json: bool,
+    },
+    /// Render a shareable, versioned storage report.
+    Report {
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        #[arg(long, value_enum, default_value_t = ReportFormatArg::Text)]
+        format: ReportFormatArg,
+        #[arg(long, conflicts_with = "save")]
+        output: Option<PathBuf>,
+        #[arg(long, conflicts_with = "output")]
+        save: bool,
+        #[arg(long)]
+        copy: bool,
+        #[arg(long)]
+        redact_home: bool,
     },
     /// Generate a non-destructive immutable plan containing safe candidates only.
     Plan {
@@ -90,6 +125,14 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Commands::Scan { path, json } => run_scan(path, json),
         Commands::Explain { path, json } => run_explain(path, json),
+        Commands::Report {
+            path,
+            format,
+            output,
+            save,
+            copy,
+            redact_home,
+        } => run_report(path, format.into(), output, save, copy, redact_home),
         Commands::Plan { path, output } => run_plan(path, output),
         Commands::Doctor { json } => run_doctor(json),
     }
@@ -155,6 +198,95 @@ fn run_explain(path: PathBuf, json: bool) -> Result<(), Box<dyn std::error::Erro
     }
 
     Ok(())
+}
+
+fn run_report(
+    path: PathBuf,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+    save: bool,
+    copy: bool,
+    redact_home: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = path.canonicalize()?;
+    let candidates = scan(&root, &ScanOptions::default())?;
+    let home = env::var_os("HOME").map(PathBuf::from);
+    let redaction_root = redact_home.then_some(home.as_deref()).flatten();
+    let report = Report::from_candidates(&root, &candidates, redaction_root);
+    let rendered = render(&report, format)?;
+
+    let mut emitted = false;
+
+    if let Some(output) = output {
+        atomic_write(&output, rendered.as_bytes())?;
+        eprintln!("wrote report to {}", output.display());
+        emitted = true;
+    }
+
+    if save {
+        let output = downloads_report_path(&report, format)?;
+        atomic_write(&output, rendered.as_bytes())?;
+        eprintln!("saved report to {}", output.display());
+        emitted = true;
+    }
+
+    if copy {
+        copy_to_clipboard(&rendered)?;
+        eprintln!("copied {} report to clipboard", format.as_str());
+        emitted = true;
+    }
+
+    if !emitted {
+        print!("{rendered}");
+        if !rendered.ends_with('\n') {
+            println!();
+        }
+    }
+
+    Ok(())
+}
+
+fn downloads_report_path(report: &Report, format: OutputFormat) -> io::Result<PathBuf> {
+    let home = env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+
+    Ok(home.join("Downloads").join(format!(
+        "sweep-report-{}.{}",
+        report.created_unix_seconds,
+        format.extension()
+    )))
+}
+
+fn copy_to_clipboard(content: &str) -> io::Result<()> {
+    if env::consts::OS != "macos" {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "clipboard copy is currently supported on macOS only",
+        ));
+    }
+
+    let mut child = Command::new("/usr/bin/pbcopy")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+
+    let Some(mut stdin) = child.stdin.take() else {
+        return Err(io::Error::other("could not open pbcopy stdin"));
+    };
+
+    stdin.write_all(content.as_bytes())?;
+    drop(stdin);
+
+    let status = child.wait()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "pbcopy exited with {status}"
+        )))
+    }
 }
 
 fn run_plan(path: PathBuf, output: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
