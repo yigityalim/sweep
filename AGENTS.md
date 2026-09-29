@@ -30,6 +30,9 @@ Do not broaden Sweep into a generic macOS cleaner, app uninstaller, system optim
 18. Report formats must label allocated bytes as estimates and must not call them guaranteed reclaimable bytes.
 19. Home-directory redaction changes presentation only; it must never affect filesystem identity or classification.
 20. Clipboard, export, TUI, and future GUI surfaces must consume the same versioned report model.
+21. Snapshot completeness must preserve discovery and candidate-traversal uncertainty.
+22. Snapshot diff identity may describe historical continuity but never proves current filesystem identity.
+23. Imported snapshots and diffs cannot be converted directly into mutation plans.
 
 ## Rust rules
 

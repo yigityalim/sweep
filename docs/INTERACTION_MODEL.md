@@ -209,23 +209,30 @@ Sort keys:
 
 ## Snapshots and growth
 
-Future commands:
+Current commands:
 
 ```console
 sw snapshot ~/Developer
 sw snapshot ~/Developer --output ~/Downloads/dev.sweep.json
 sw diff old.sweep.json new.sweep.json
+sw diff old.sweep.json new.sweep.json --format markdown
+```
+
+Future history command:
+
+```console
 sw history
 ```
 
-Snapshots use a dedicated versioned schema or an explicitly versioned report schema.
+Snapshots use a dedicated versioned schema.
 
 Important properties:
 
 - imported snapshots are read-only;
-- partial scans stay marked partial;
-- a cancelled scan cannot silently become a complete snapshot;
-- diffs compare stable candidate identity where possible and path+provider otherwise;
+- discovery errors and incomplete candidate traversal keep the snapshot marked incomplete;
+- a process interrupted before atomic write cannot leave a complete-looking snapshot;
+- diffs match path+kind first and only use filesystem identity for unique unmatched moves;
+- snapshot roots must match before diffing;
 - growth is reported independently from cleanup eligibility.
 
 This powers the "prevent" product direction without requiring a permanent daemon.

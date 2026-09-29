@@ -10,8 +10,10 @@ use std::{
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use sweep_core::{Candidate, Decision, Plan};
-use sweep_report::{OutputFormat, Report, render};
-use sweep_scan::{ScanOptions, classify_path, scan};
+use sweep_report::{
+    OutputFormat, Report, Snapshot, SnapshotDiffFormat, render, render_snapshot_diff,
+};
+use sweep_scan::{ScanOptions, classify_path, scan, scan_with_diagnostics};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -31,6 +33,23 @@ enum ReportFormatArg {
     Markdown,
     Json,
     Toml,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum DiffFormatArg {
+    Text,
+    Markdown,
+    Json,
+}
+
+impl From<DiffFormatArg> for SnapshotDiffFormat {
+    fn from(value: DiffFormatArg) -> Self {
+        match value {
+            DiffFormatArg::Text => Self::Text,
+            DiffFormatArg::Markdown => Self::Markdown,
+            DiffFormatArg::Json => Self::Json,
+        }
+    }
 }
 
 impl From<ReportFormatArg> for OutputFormat {
@@ -73,6 +92,22 @@ enum Commands {
         copy: bool,
         #[arg(long)]
         redact_home: bool,
+    },
+    /// Persist a read-only storage snapshot for later comparison.
+    Snapshot {
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+    /// Compare two read-only storage snapshots.
+    Diff {
+        before: PathBuf,
+        after: PathBuf,
+        #[arg(long, value_enum, default_value_t = DiffFormatArg::Text)]
+        format: DiffFormatArg,
+        #[arg(long)]
+        output: Option<PathBuf>,
     },
     /// Generate a non-destructive immutable plan containing safe candidates only.
     Plan {
@@ -133,6 +168,13 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             copy,
             redact_home,
         } => run_report(path, format.into(), output, save, copy, redact_home),
+        Commands::Snapshot { path, output } => run_snapshot(path, output),
+        Commands::Diff {
+            before,
+            after,
+            format,
+            output,
+        } => run_diff(before, after, format.into(), output),
         Commands::Plan { path, output } => run_plan(path, output),
         Commands::Doctor { json } => run_doctor(json),
     }
@@ -285,6 +327,78 @@ fn copy_to_clipboard(content: &str) -> io::Result<()> {
     } else {
         Err(io::Error::other(format!("pbcopy exited with {status}")))
     }
+}
+
+fn run_snapshot(path: PathBuf, output: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+    let root = path.canonicalize()?;
+    let scan = scan_with_diagnostics(&root, &ScanOptions::default())?;
+    let snapshot = Snapshot::from_candidates(
+        &root,
+        &scan.candidates,
+        scan.discovery_complete,
+        scan.discovery_error_count,
+    );
+    let json = serde_json::to_string_pretty(&snapshot)?;
+    let output = match output {
+        Some(output) => output,
+        None => default_snapshot_path(&snapshot)?,
+    };
+
+    atomic_write(&output, json.as_bytes())?;
+    eprintln!(
+        "saved {} candidates ({}) to {}",
+        snapshot.summary.candidate_count,
+        format_bytes(snapshot.summary.allocated_bytes_estimate),
+        output.display()
+    );
+
+    if !snapshot.complete {
+        eprintln!(
+            "warning: snapshot is incomplete ({} discovery errors); diffs may omit filesystem state",
+            snapshot.discovery_error_count
+        );
+    }
+
+    Ok(())
+}
+
+fn run_diff(
+    before: PathBuf,
+    after: PathBuf,
+    format: SnapshotDiffFormat,
+    output: Option<PathBuf>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let before_bytes = fs::read(&before)?;
+    let after_bytes = fs::read(&after)?;
+    let before_snapshot: Snapshot = serde_json::from_slice(&before_bytes)?;
+    let after_snapshot: Snapshot = serde_json::from_slice(&after_bytes)?;
+    let diff = before_snapshot.diff(&after_snapshot)?;
+    let rendered = render_snapshot_diff(&diff, format)?;
+
+    if let Some(output) = output {
+        atomic_write(&output, rendered.as_bytes())?;
+        eprintln!("wrote snapshot diff to {}", output.display());
+    } else {
+        print!("{rendered}");
+        if !rendered.ends_with('\n') {
+            println!();
+        }
+    }
+
+    Ok(())
+}
+
+fn default_snapshot_path(snapshot: &Snapshot) -> io::Result<PathBuf> {
+    let home = env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+
+    Ok(home
+        .join("Library/Application Support/Sweep/snapshots")
+        .join(format!(
+            "sweep-snapshot-{}.sweep.json",
+            snapshot.created_unix_seconds
+        )))
 }
 
 fn run_plan(path: PathBuf, output: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
