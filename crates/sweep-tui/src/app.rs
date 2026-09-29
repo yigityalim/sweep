@@ -20,8 +20,8 @@ use tachyonfx::{EffectManager, Interpolation, Motion, fx};
 use crate::{
     display_path,
     preview::{
-        BrowseEntry, GrowthData, copy_text_report, history_directory, list_directory, load_growth,
-        reveal_in_finder, save_report,
+        BrowseEntry, GrowthData, copy_report, copy_to_clipboard, history_directory, list_directory,
+        load_growth, reveal_in_finder, save_report,
     },
     theme::Theme,
     ui,
@@ -130,14 +130,34 @@ pub(crate) enum Overlay {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CommandFamily {
+    Yank,
+    Save,
+}
+
+impl CommandFamily {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Yank => "YANK",
+            Self::Save => "SAVE",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PaletteAction {
     PreviewClean,
     RevealFinder,
     ChangeScope,
     UseBrowseAsScope,
+    SaveText,
     SaveMarkdown,
     SaveJson,
+    SaveToml,
     CopyText,
+    CopyMarkdown,
+    CopyJson,
+    CopyToml,
     OpenBrowse,
     OpenGrowth,
     OpenHistory,
@@ -145,14 +165,19 @@ pub(crate) enum PaletteAction {
 }
 
 impl PaletteAction {
-    pub(crate) const ALL: [Self; 11] = [
+    pub(crate) const ALL: [Self; 16] = [
         Self::PreviewClean,
         Self::RevealFinder,
         Self::ChangeScope,
         Self::UseBrowseAsScope,
+        Self::SaveText,
         Self::SaveMarkdown,
         Self::SaveJson,
+        Self::SaveToml,
         Self::CopyText,
+        Self::CopyMarkdown,
+        Self::CopyJson,
+        Self::CopyToml,
         Self::OpenBrowse,
         Self::OpenGrowth,
         Self::OpenHistory,
@@ -165,9 +190,14 @@ impl PaletteAction {
             Self::RevealFinder => "Reveal selected path in Finder",
             Self::ChangeScope => "Change scan scope…",
             Self::UseBrowseAsScope => "Use browsed directory as scan scope",
+            Self::SaveText => "Save text report",
             Self::SaveMarkdown => "Save Markdown report",
             Self::SaveJson => "Save JSON report",
+            Self::SaveToml => "Save TOML report",
             Self::CopyText => "Copy text report",
+            Self::CopyMarkdown => "Copy Markdown report",
+            Self::CopyJson => "Copy JSON report",
+            Self::CopyToml => "Copy TOML report",
             Self::OpenBrowse => "Open file browser",
             Self::OpenGrowth => "Open snapshot growth",
             Self::OpenHistory => "Open cleanup history",
@@ -217,6 +247,9 @@ pub(crate) struct App {
     pub(crate) overlay: Option<Overlay>,
     pub(crate) drawer: Option<Drawer>,
     pub(crate) palette_index: usize,
+    pub(crate) palette_query: String,
+    pub(crate) inspect_scroll: u16,
+    pub(crate) pending_family: Option<CommandFamily>,
     pub(crate) selected_paths: BTreeSet<String>,
     pub(crate) status_message: Option<String>,
     pub(crate) scanning: bool,
@@ -267,6 +300,9 @@ impl App {
             overlay: None,
             drawer: None,
             palette_index: 0,
+            palette_query: String::new(),
+            inspect_scroll: 0,
+            pending_family: None,
             selected_paths: BTreeSet::new(),
             status_message: None,
             scanning: false,
