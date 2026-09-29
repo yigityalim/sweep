@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use sweep_core::{CandidateKind, RecoveryContract, RecoveryKind};
 
@@ -44,13 +44,29 @@ impl Provider for NodeProvider {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PackageManager {
+    Pnpm,
+    Yarn,
+    Npm,
+    Bun,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DependencyRestore {
+    manager: PackageManager,
+    lockfile: &'static str,
+    root: PathBuf,
+    command: String,
+}
+
 fn node_modules(parent: &Path) -> ProviderAssessment {
     let restore = dependency_restore(parent);
     let mut assessment = ProviderAssessment::new(
         CandidateKind::NodeModules,
         RecoveryContract {
             kind: RecoveryKind::ReinstallDependencies,
-            command: restore.as_ref().map(|(_, command)| command.clone()),
+            command: restore.as_ref().map(|restore| restore.command.clone()),
             detail: String::from(
                 "Dependencies are reconstructable when a supported lockfile defines the install boundary.",
             ),
@@ -59,59 +75,127 @@ fn node_modules(parent: &Path) -> ProviderAssessment {
         "package.json + node_modules",
     );
 
-    if let Some((lockfile, _)) = restore {
-        assessment.prove(
-            "dependency_lockfile",
-            format!("Supported dependency lockfile present: {lockfile}."),
-        );
+    if let Some(restore) = restore {
+        if restore.root == parent {
+            assessment.prove(
+                "dependency_lockfile",
+                format!(
+                    "Supported dependency lockfile present: {}.",
+                    restore.lockfile
+                ),
+            );
+        } else {
+            assessment.prove(
+                "dependency_lockfile",
+                format!(
+                    "Supported dependency lockfile inherited from an ancestor repository scope: {}.",
+                    restore.lockfile
+                ),
+            );
+        }
     } else {
         assessment.review(
             "dependency_lockfile",
-            "No supported dependency lockfile was found; exact dependency recovery is not proven.",
+            "No supported dependency lockfile was found within the candidate's repository scope; exact dependency recovery is not proven.",
         );
     }
 
     assessment
 }
 
-fn dependency_restore(parent: &Path) -> Option<(&'static str, String)> {
-    if parent.join("pnpm-lock.yaml").is_file() {
-        return Some((
-            "pnpm-lock.yaml",
-            String::from("pnpm install --frozen-lockfile"),
-        ));
-    }
+fn dependency_restore(parent: &Path) -> Option<DependencyRestore> {
+    let repository_root = repository_root(parent);
+    let mut current = Some(parent);
 
-    if parent.join("yarn.lock").is_file() {
-        let command = if parent.join(".yarnrc.yml").is_file() {
-            "yarn install --immutable"
-        } else {
-            "yarn install --frozen-lockfile"
-        };
-        return Some(("yarn.lock", String::from(command)));
-    }
+    while let Some(directory) = current {
+        if let Some(restore) = dependency_restore_at(directory) {
+            return Some(restore);
+        }
 
-    if parent.join("package-lock.json").is_file() {
-        return Some(("package-lock.json", String::from("npm ci")));
+        if repository_root.as_deref() == Some(directory) || repository_root.is_none() {
+            break;
+        }
+
+        current = directory.parent();
     }
 
     None
 }
 
-fn build_command(parent: &Path) -> Option<String> {
-    if parent.join("pnpm-lock.yaml").is_file() {
-        return Some(String::from("pnpm build"));
+fn dependency_restore_at(directory: &Path) -> Option<DependencyRestore> {
+    if directory.join("pnpm-lock.yaml").is_file() {
+        return Some(DependencyRestore {
+            manager: PackageManager::Pnpm,
+            lockfile: "pnpm-lock.yaml",
+            root: directory.to_path_buf(),
+            command: String::from("pnpm install --frozen-lockfile"),
+        });
     }
 
-    if parent.join("yarn.lock").is_file() {
-        return Some(String::from("yarn build"));
+    if directory.join("yarn.lock").is_file() {
+        let command = if directory.join(".yarnrc.yml").is_file() {
+            "yarn install --immutable"
+        } else {
+            "yarn install --frozen-lockfile"
+        };
+
+        return Some(DependencyRestore {
+            manager: PackageManager::Yarn,
+            lockfile: "yarn.lock",
+            root: directory.to_path_buf(),
+            command: String::from(command),
+        });
     }
 
-    if parent.join("package-lock.json").is_file() {
-        return Some(String::from("npm run build"));
+    if directory.join("package-lock.json").is_file() {
+        return Some(DependencyRestore {
+            manager: PackageManager::Npm,
+            lockfile: "package-lock.json",
+            root: directory.to_path_buf(),
+            command: String::from("npm ci"),
+        });
+    }
+
+    if directory.join("bun.lock").is_file() {
+        return Some(DependencyRestore {
+            manager: PackageManager::Bun,
+            lockfile: "bun.lock",
+            root: directory.to_path_buf(),
+            command: String::from("bun install --frozen-lockfile"),
+        });
+    }
+
+    if directory.join("bun.lockb").is_file() {
+        return Some(DependencyRestore {
+            manager: PackageManager::Bun,
+            lockfile: "bun.lockb",
+            root: directory.to_path_buf(),
+            command: String::from("bun install --frozen-lockfile"),
+        });
     }
 
     None
+}
+
+fn repository_root(start: &Path) -> Option<PathBuf> {
+    start
+        .ancestors()
+        .find(|ancestor| {
+            let git = ancestor.join(".git");
+            git.is_dir() || git.is_file()
+        })
+        .map(Path::to_path_buf)
+}
+
+fn build_command(parent: &Path) -> Option<String> {
+    let restore = dependency_restore(parent)?;
+
+    Some(match restore.manager {
+        PackageManager::Pnpm => String::from("pnpm build"),
+        PackageManager::Yarn => String::from("yarn build"),
+        PackageManager::Npm => String::from("npm run build"),
+        PackageManager::Bun => String::from("bun run build"),
+    })
 }
 
 #[cfg(test)]
@@ -155,5 +239,84 @@ mod tests {
 
         assert_eq!(assessment.decision, Decision::Safe);
         assert_eq!(assessment.recovery.command.as_deref(), Some("npm ci"));
+    }
+
+    #[test]
+    fn workspace_package_inherits_repository_lockfile() {
+        let root = tempdir().unwrap();
+        fs::create_dir(root.path().join(".git")).unwrap();
+        fs::write(
+            root.path().join("pnpm-lock.yaml"),
+            "lockfileVersion: '9.0'\n",
+        )
+        .unwrap();
+
+        let package = root.path().join("packages/ui");
+        fs::create_dir_all(package.join("node_modules")).unwrap();
+        fs::write(package.join("package.json"), "{}").unwrap();
+
+        let assessment = NodeProvider
+            .assess(
+                &package.join("node_modules"),
+                &ProviderContext { home: None },
+            )
+            .unwrap();
+
+        assert_eq!(assessment.decision, Decision::Safe);
+        assert_eq!(
+            assessment.recovery.command.as_deref(),
+            Some("pnpm install --frozen-lockfile")
+        );
+        assert!(assessment.evidence.iter().any(|evidence| {
+            evidence.code == "dependency_lockfile"
+                && evidence.detail.contains("ancestor repository scope")
+        }));
+    }
+
+    #[test]
+    fn lockfile_search_does_not_escape_repository_boundary() {
+        let root = tempdir().unwrap();
+        fs::write(
+            root.path().join("pnpm-lock.yaml"),
+            "lockfileVersion: '9.0'\n",
+        )
+        .unwrap();
+
+        let repository = root.path().join("repo");
+        fs::create_dir_all(repository.join(".git")).unwrap();
+
+        let package = repository.join("packages/ui");
+        fs::create_dir_all(package.join("node_modules")).unwrap();
+        fs::write(package.join("package.json"), "{}").unwrap();
+
+        let assessment = NodeProvider
+            .assess(
+                &package.join("node_modules"),
+                &ProviderContext { home: None },
+            )
+            .unwrap();
+
+        assert_eq!(assessment.decision, Decision::Review);
+    }
+
+    #[test]
+    fn bun_lock_provides_frozen_install_recovery_contract() {
+        let root = tempdir().unwrap();
+        fs::write(root.path().join("package.json"), "{}").unwrap();
+        fs::write(root.path().join("bun.lock"), "").unwrap();
+        fs::create_dir(root.path().join("node_modules")).unwrap();
+
+        let assessment = NodeProvider
+            .assess(
+                &root.path().join("node_modules"),
+                &ProviderContext { home: None },
+            )
+            .unwrap();
+
+        assert_eq!(assessment.decision, Decision::Safe);
+        assert_eq!(
+            assessment.recovery.command.as_deref(),
+            Some("bun install --frozen-lockfile")
+        );
     }
 }

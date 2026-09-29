@@ -251,6 +251,18 @@ fn display_path(path: &Path, redact_home: Option<&Path>) -> String {
     path.to_string_lossy().into_owned()
 }
 
+fn human_visible(candidate: &ReportCandidate) -> bool {
+    candidate.allocated_bytes_estimate > 0 || candidate.decision == "protected"
+}
+
+fn hidden_human_candidate_count(report: &Report) -> usize {
+    report
+        .candidates
+        .iter()
+        .filter(|candidate| !human_visible(candidate))
+        .count()
+}
+
 fn render_text(report: &Report) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "Sweep storage report");
@@ -274,7 +286,19 @@ fn render_text(report: &Report) -> String {
         format_bytes(report.summary.safe_allocated_bytes_estimate)
     );
 
-    for candidate in &report.candidates {
+    let hidden = hidden_human_candidate_count(report);
+    if hidden > 0 {
+        let _ = writeln!(
+            out,
+            "Detailed view omits {hidden} non-protected candidates with a 0 B allocated-size estimate."
+        );
+    }
+
+    for candidate in report
+        .candidates
+        .iter()
+        .filter(|candidate| human_visible(candidate))
+    {
         let _ = writeln!(out);
         let _ = writeln!(
             out,
@@ -319,11 +343,22 @@ fn render_markdown(report: &Report) -> String {
         "- **Safe allocated-size estimate:** {}",
         format_bytes(report.summary.safe_allocated_bytes_estimate)
     );
+    let hidden = hidden_human_candidate_count(report);
+    if hidden > 0 {
+        let _ = writeln!(
+            out,
+            "- **Detailed view omitted:** {hidden} non-protected candidates with a 0 B allocated-size estimate"
+        );
+    }
     let _ = writeln!(out);
     let _ = writeln!(out, "| Decision | Allocated estimate | Kind | Path |");
     let _ = writeln!(out, "| --- | ---: | --- | --- |");
 
-    for candidate in &report.candidates {
+    for candidate in report
+        .candidates
+        .iter()
+        .filter(|candidate| human_visible(candidate))
+    {
         let _ = writeln!(
             out,
             "| {} | {} | {} | {} |",
@@ -334,7 +369,11 @@ fn render_markdown(report: &Report) -> String {
         );
     }
 
-    for candidate in &report.candidates {
+    for candidate in report
+        .candidates
+        .iter()
+        .filter(|candidate| human_visible(candidate))
+    {
         let _ = writeln!(out);
         let _ = writeln!(
             out,
@@ -574,6 +613,34 @@ mod tests {
             assert!(!output.is_empty());
             assert!(output.contains("safe"));
         }
+    }
+
+    #[test]
+    fn human_reports_hide_zero_allocated_noise_but_keep_protected_entries() {
+        let report = Report::from_candidates(
+            Path::new("/tmp"),
+            &[
+                candidate(Decision::Safe, "/tmp/zero-safe", 0),
+                candidate(Decision::Protected, "/tmp/zero-protected", 0),
+                candidate(Decision::Safe, "/tmp/nonzero", 10),
+            ],
+            None,
+        );
+
+        let text = render(&report, OutputFormat::Text).unwrap();
+        assert!(!text.contains("/tmp/zero-safe"));
+        assert!(text.contains("/tmp/zero-protected"));
+        assert!(text.contains("omits 1 non-protected candidates"));
+
+        let markdown = render(&report, OutputFormat::Markdown).unwrap();
+        assert!(!markdown.contains("/tmp/zero-safe"));
+        assert!(markdown.contains("/tmp/zero-protected"));
+
+        let json = render(&report, OutputFormat::Json).unwrap();
+        assert!(json.contains("/tmp/zero-safe"));
+
+        let toml = render(&report, OutputFormat::Toml).unwrap();
+        assert!(toml.contains("/tmp/zero-safe"));
     }
 
     #[test]

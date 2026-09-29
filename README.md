@@ -88,7 +88,7 @@ sw report ~/Developer --format toml --save
 sw report ~/Developer --format markdown --redact-home
 ```
 
-`report` renders the same canonical storage model as text, Markdown, JSON, or TOML. Reports contain explicit decision counts and allocated-size estimates; they never relabel estimates as guaranteed reclaimable capacity.
+`report` renders the same canonical storage model as text, Markdown, JSON, or TOML. Reports contain explicit decision counts and allocated-size estimates; they never relabel estimates as guaranteed reclaimable capacity. Text and Markdown omit non-protected 0 B allocated-size candidates from the detailed view to reduce workspace-link noise; JSON and TOML retain the complete canonical candidate set.
 
 `--copy` writes the report to the macOS clipboard. `--save` writes a timestamped file into `~/Downloads`. `--output <path>` writes atomically to a chosen location. `--redact-home` replaces the current home-directory prefix with `~` for shareable reports.
 
@@ -130,7 +130,7 @@ Sweep has three decisions:
 
 The initial rule set recognizes:
 
-- Node.js `node_modules`;
+- Node.js `node_modules`, including repository-scoped workspace lockfile inheritance and npm/pnpm/Yarn/Bun lockfiles;
 - Next.js `.next`;
 - Turborepo `.turbo`;
 - Rust/Cargo `target`;
