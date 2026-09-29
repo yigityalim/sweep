@@ -19,12 +19,19 @@ Implemented foundation:
 
 Before deletion exists:
 
+Implemented:
+
+- plan structural validation;
+- complete candidate identity revalidation;
+- subtree metadata fingerprint revalidation;
+- path-parent physical containment checks;
+- structured per-candidate failure reasons.
+
+Remaining before mutation:
+
 - stable plan schema;
 - deterministic candidate identifiers;
-- complete identity revalidation;
-- path-parent physical containment checks;
 - cancellation semantics;
-- structured failure reasons;
 - benchmark corpus.
 
 ## Phase 2 — reversible mutation
