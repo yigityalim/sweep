@@ -182,7 +182,7 @@ s t            save TOML report
 
 The inspect overlay is scrollable with `j/k`, arrow keys, and page up/down. Its evidence summary reports proven/unknown/refuted counts without reinterpreting classification.
 
-Growth uses the latest valid snapshot for the exact current scope as a baseline once a live scan completes. In the Growth view, `b` saves the current validated live snapshot as a non-clobbering baseline under Sweep's Application Support snapshot directory; the same action is available from the command palette. The Candidates table shows a `Δ SNAPSHOT` column and can sort by growth; the inspector shows the selected candidate's live delta. Before a live scan exists, the Growth view can still compare the latest two valid snapshots. Invalid snapshots are ignored with an explicit count.
+Growth uses the latest valid snapshot for the exact current scope as a baseline once a live scan completes. The Candidates table shows a `Δ SNAPSHOT` column and can sort by growth; the inspector shows the selected candidate's live delta. Before a live scan exists, the Growth view can still compare the latest two valid snapshots. Invalid snapshots are ignored with an explicit count.
 
 History now has two intentionally separate concepts. During preview-only development, confirming a clean preview creates a volatile in-memory session receipt so the future history UX can be exercised. It records the preview scope, enabled safe candidates, excluded count, paths, timestamp, and allocated-size estimate. It is never written to disk and is clearly labeled `NO FILES CHANGED`. Persistent cleanup history remains reserved for a future mutation engine that can record revalidation, mutation outcome, and measured reclaimed bytes.
 
@@ -275,6 +275,7 @@ Important properties:
 - imported snapshots are read-only;
 - new snapshots store candidate locations only as paths relative to the snapshot root; legacy v1 absolute candidate paths are accepted on read but never emitted by v2;
 - candidates that cannot be proven to reside under the requested snapshot root are omitted and force the snapshot incomplete;
+- imported candidate relative paths are validated before diffing; absolute, empty, or parent-traversing relative paths are rejected;
 - discovery errors and incomplete candidate traversal keep the snapshot marked incomplete;
 - default snapshot filenames never overwrite an existing same-second snapshot; a numeric suffix is allocated instead;
 - a process interrupted before atomic write cannot leave a complete-looking snapshot;
@@ -363,9 +364,8 @@ Implementation order:
 3. snapshot/diff and growth model;
 4. TUI on top of the report model;
 5. immutable plan revalidation;
-6. TUI plan-revalidation integration;
-7. mutation engine;
-8. measured reclamation history;
-9. optional budgets and launchd scheduling.
+6. mutation engine;
+7. measured reclamation history;
+8. optional budgets and launchd scheduling.
 
 Homebrew, Docker, simulator runtimes, Playwright browsers, IDE/agent caches, and other stateful providers should be added only when their owner/liveness contracts are understood. Provider count is not a success metric.
