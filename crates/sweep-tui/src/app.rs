@@ -438,6 +438,15 @@ impl App {
         self.growth.diff.as_ref()
     }
 
+    pub(crate) fn visible_palette_actions(&self) -> Vec<PaletteAction> {
+        let query = self.palette_query.trim().to_lowercase();
+        PaletteAction::ALL
+            .iter()
+            .copied()
+            .filter(|action| query.is_empty() || action.label().to_lowercase().contains(&query))
+            .collect()
+    }
+
     pub(crate) fn candidate_decision_for_path(&self, path: &Path) -> Option<&str> {
         let display = display_path(path);
         self.report
@@ -545,6 +554,10 @@ impl App {
             InputMode::Normal => {}
         }
 
+        if self.handle_command_family_key(key) {
+            return Ok(());
+        }
+
         if self.handle_drawer_key(key) {
             return Ok(());
         }
@@ -576,8 +589,11 @@ impl App {
             KeyCode::Char('?') => self.overlay = Some(Overlay::Help),
             KeyCode::Char(':') => {
                 self.palette_index = 0;
+                self.palette_query.clear();
                 self.overlay = Some(Overlay::Palette);
             }
+            KeyCode::Char('y') => self.pending_family = Some(CommandFamily::Yank),
+            KeyCode::Char('s') => self.pending_family = Some(CommandFamily::Save),
             KeyCode::Char('1') => self.set_view(View::Candidates),
             KeyCode::Char('2') => self.set_view(View::Browse),
             KeyCode::Char('3') => self.set_view(View::Growth),
@@ -618,6 +634,7 @@ impl App {
         match key.code {
             KeyCode::Char('e') | KeyCode::Enter => {
                 if self.selected_candidate().is_some() {
+                    self.inspect_scroll = 0;
                     self.overlay = Some(Overlay::Inspect);
                 }
             }
