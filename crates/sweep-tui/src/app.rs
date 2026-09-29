@@ -729,8 +729,7 @@ impl App {
             Overlay::Palette => match key.code {
                 KeyCode::Esc => self.overlay = None,
                 KeyCode::Char('j') | KeyCode::Down => {
-                    self.palette_index =
-                        (self.palette_index + 1).min(PaletteAction::ALL.len() - 1);
+                    self.palette_index = (self.palette_index + 1).min(PaletteAction::ALL.len() - 1);
                 }
                 KeyCode::Char('k') | KeyCode::Up => {
                     self.palette_index = self.palette_index.saturating_sub(1);
@@ -853,8 +852,9 @@ impl App {
         };
 
         if entry.is_symlink {
-            self.status_message =
-                Some(String::from("Symlink traversal is disabled in Sweep Browse."));
+            self.status_message = Some(String::from(
+                "Symlink traversal is disabled in Sweep Browse.",
+            ));
             return;
         }
 
@@ -933,7 +933,9 @@ impl App {
             return;
         };
 
-        let current = self.selected_candidate().map(|candidate| candidate.path.as_str());
+        let current = self
+            .selected_candidate()
+            .map(|candidate| candidate.path.as_str());
         let Some(plan) = build_clean_plan(report, &self.selected_paths, current) else {
             self.status_message = Some(String::from("Select at least one candidate first."));
             return;
@@ -943,7 +945,10 @@ impl App {
     }
 
     fn toggle_candidate_mark(&mut self) {
-        let Some(path) = self.selected_candidate().map(|candidate| candidate.path.clone()) else {
+        let Some(path) = self
+            .selected_candidate()
+            .map(|candidate| candidate.path.clone())
+        else {
             return;
         };
 
@@ -1092,7 +1097,12 @@ fn build_clean_plan(
 ) -> Option<CleanPlan> {
     let requested: Vec<_> = if selected_paths.is_empty() {
         current_path
-            .and_then(|path| report.candidates.iter().find(|candidate| candidate.path == path))
+            .and_then(|path| {
+                report
+                    .candidates
+                    .iter()
+                    .find(|candidate| candidate.path == path)
+            })
             .cloned()
             .into_iter()
             .collect()
@@ -1267,7 +1277,10 @@ mod tests {
             .iter()
             .filter(|candidate| candidate.decision == "protected")
             .count();
-        let logical_bytes = candidates.iter().map(|candidate| candidate.logical_bytes).sum();
+        let logical_bytes = candidates
+            .iter()
+            .map(|candidate| candidate.logical_bytes)
+            .sum();
         let allocated_bytes_estimate = candidates
             .iter()
             .map(|candidate| candidate.allocated_bytes_estimate)
@@ -1352,12 +1365,7 @@ mod tests {
         let data = report(vec![candidate("~/Developer/a/target", "safe", 10)]);
         let selected = BTreeSet::new();
 
-        let plan = build_clean_plan(
-            &data,
-            &selected,
-            Some("~/Developer/a/target"),
-        )
-        .unwrap();
+        let plan = build_clean_plan(&data, &selected, Some("~/Developer/a/target")).unwrap();
 
         assert_eq!(plan.requested_count, 1);
         assert_eq!(plan.included.len(), 1);
