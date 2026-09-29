@@ -294,7 +294,11 @@ fn render_text(report: &Report) -> String {
         );
     }
 
-    for candidate in report.candidates.iter().filter(|candidate| human_visible(candidate)) {
+    for candidate in report
+        .candidates
+        .iter()
+        .filter(|candidate| human_visible(candidate))
+    {
         let _ = writeln!(out);
         let _ = writeln!(
             out,
@@ -350,7 +354,11 @@ fn render_markdown(report: &Report) -> String {
     let _ = writeln!(out, "| Decision | Allocated estimate | Kind | Path |");
     let _ = writeln!(out, "| --- | ---: | --- | --- |");
 
-    for candidate in report.candidates.iter().filter(|candidate| human_visible(candidate)) {
+    for candidate in report
+        .candidates
+        .iter()
+        .filter(|candidate| human_visible(candidate))
+    {
         let _ = writeln!(
             out,
             "| {} | {} | {} | {} |",
@@ -361,7 +369,11 @@ fn render_markdown(report: &Report) -> String {
         );
     }
 
-    for candidate in report.candidates.iter().filter(|candidate| human_visible(candidate)) {
+    for candidate in report
+        .candidates
+        .iter()
+        .filter(|candidate| human_visible(candidate))
+    {
         let _ = writeln!(out);
         let _ = writeln!(
             out,
