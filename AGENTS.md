@@ -41,6 +41,7 @@ Do not broaden Sweep into a generic macOS cleaner, app uninstaller, system optim
 29. New snapshot candidate records must not persist absolute candidate paths; relative-to-root paths are sufficient for historical comparison.
 30. A candidate outside the declared snapshot root must never be rewritten into an absolute-looking relative path. It must be excluded and the snapshot marked incomplete.
 31. Default snapshot creation must not overwrite an existing snapshot path on timestamp collision.
+32. An ancestor Node lockfile proves recovery only when the package's workspace membership is independently proven; repository ancestry alone is insufficient.
 
 ## Rust rules
 
