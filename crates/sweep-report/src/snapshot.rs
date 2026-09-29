@@ -888,6 +888,61 @@ mod tests {
     }
 
     #[test]
+    fn new_snapshot_serialization_omits_absolute_candidate_paths() {
+        let snapshot = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
+        let json = serde_json::to_value(&snapshot).unwrap();
+
+        assert_eq!(snapshot.schema_version, SNAPSHOT_SCHEMA_VERSION);
+        assert_eq!(snapshot.candidates[0].relative_path, "a");
+        assert_eq!(snapshot.candidates[0].path, None);
+        assert!(json["candidates"][0].get("path").is_none());
+    }
+
+    #[test]
+    fn legacy_schema_one_snapshot_with_absolute_path_still_validates() {
+        let mut snapshot = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
+        snapshot.schema_version = 1;
+        snapshot.candidates[0].path = Some(String::from("/workspace/a"));
+
+        let json = serde_json::to_string(&snapshot).unwrap();
+        let decoded: Snapshot = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(decoded.schema_version, 1);
+        assert_eq!(decoded.candidates[0].path.as_deref(), Some("/workspace/a"));
+        assert_eq!(decoded.validate(), Ok(()));
+    }
+
+    #[test]
+    fn candidate_outside_snapshot_root_is_omitted_and_marks_snapshot_incomplete() {
+        let snapshot = Snapshot::from_candidates(
+            Path::new("/workspace"),
+            &[
+                candidate("/workspace/a", Decision::Safe, 10, 1),
+                candidate("/outside/b", Decision::Safe, 20, 2),
+            ],
+            true,
+            0,
+        );
+
+        assert_eq!(snapshot.candidates.len(), 1);
+        assert_eq!(snapshot.candidates[0].relative_path, "a");
+        assert!(!snapshot.complete);
+    }
+
+    #[test]
+    fn unsupported_snapshot_schema_is_rejected() {
+        let mut snapshot = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
+        snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION + 1;
+
+        assert_eq!(
+            snapshot.validate(),
+            Err(SnapshotError::UnsupportedSchemaVersion(
+                SNAPSHOT_SCHEMA_VERSION + 1
+            ))
+        );
+    }
+
+    #[test]
     fn diff_tracks_growth_and_additions() {
         let before = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
         let after = snapshot(&[
