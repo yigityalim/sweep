@@ -719,6 +719,7 @@ impl App {
                 }
             }
             KeyCode::Char('/') if matches!(self.view, View::Candidates | View::Browse) => {
+                self.cancel_range_selection();
                 self.query.clear();
                 self.input_mode = InputMode::Search;
             }
@@ -1018,6 +1019,18 @@ impl App {
                 self.set_view(View::Candidates);
                 self.open_clean_preview();
             }
+            PaletteAction::SelectAllVisibleSafe => {
+                self.set_view(View::Candidates);
+                self.select_all_visible_safe();
+            }
+            PaletteAction::ClearSelection => {
+                self.set_view(View::Candidates);
+                self.clear_candidate_selection();
+            }
+            PaletteAction::ToggleSelectedOnly => {
+                self.set_view(View::Candidates);
+                self.toggle_selected_only();
+            }
             PaletteAction::RevealFinder => self.reveal_selected(),
             PaletteAction::ChangeScope => {
                 self.path_input = self.root_label();
@@ -1056,6 +1069,7 @@ impl App {
         self.drawer = None;
         self.pending_family = None;
         self.inspect_scroll = 0;
+        self.cancel_range_selection();
 
         match view {
             View::Candidates => self.clamp_candidate_selection(),
@@ -1255,6 +1269,122 @@ impl App {
         if !self.selected_paths.insert(path.clone()) {
             self.selected_paths.remove(&path);
         }
+
+        if self.selected_only {
+            self.clamp_candidate_selection();
+        }
+    }
+
+    fn toggle_range_selection(&mut self) {
+        if self.range_selection.is_some() {
+            self.cancel_range_selection();
+            self.status_message = Some(String::from("Range selection ended."));
+            return;
+        }
+
+        let Some(anchor_path) = self
+            .selected_candidate()
+            .map(|candidate| candidate.path.clone())
+        else {
+            return;
+        };
+
+        let baseline = self.selected_paths.clone();
+        self.range_selection = Some(RangeSelection {
+            anchor_path,
+            baseline,
+        });
+        self.range_selecting = true;
+        self.extend_range_selection();
+        self.status_message = Some(String::from(
+            "Range selection active. Move with j/k, arrows, gg or G.",
+        ));
+    }
+
+    fn cancel_range_selection(&mut self) {
+        self.range_selection = None;
+        self.range_selecting = false;
+    }
+
+    fn extend_range_selection(&mut self) {
+        let Some(range) = self.range_selection.clone() else {
+            return;
+        };
+        let Some(current_path) = self
+            .selected_candidate()
+            .map(|candidate| candidate.path.clone())
+        else {
+            return;
+        };
+        let Some(report) = self.report.as_ref() else {
+            return;
+        };
+
+        let indices = self.visible_indices();
+        let anchor = indices.iter().position(|index| {
+            report.candidates[*index].path == range.anchor_path
+        });
+        let current = indices.iter().position(|index| {
+            report.candidates[*index].path == current_path
+        });
+        let (Some(anchor), Some(current)) = (anchor, current) else {
+            self.cancel_range_selection();
+            return;
+        };
+
+        let start = anchor.min(current);
+        let end = anchor.max(current);
+        let mut selected = range.baseline;
+        for index in &indices[start..=end] {
+            selected.insert(report.candidates[*index].path.clone());
+        }
+        self.selected_paths = selected;
+    }
+
+    fn select_all_visible_safe(&mut self) {
+        self.cancel_range_selection();
+        let Some(report) = self.report.as_ref() else {
+            return;
+        };
+        let paths: Vec<_> = self
+            .visible_indices()
+            .into_iter()
+            .filter_map(|index| {
+                let candidate = &report.candidates[index];
+                (candidate.decision == "safe").then(|| candidate.path.clone())
+            })
+            .collect();
+
+        for path in &paths {
+            self.selected_paths.insert(path.clone());
+        }
+        self.status_message = Some(format!("Selected {} visible safe candidate(s).", paths.len()));
+    }
+
+    fn clear_candidate_selection(&mut self) {
+        self.cancel_range_selection();
+        self.selected_paths.clear();
+        self.selected_only = false;
+        self.clamp_candidate_selection();
+        self.status_message = Some(String::from("Candidate selection cleared."));
+    }
+
+    fn toggle_selected_only(&mut self) {
+        self.cancel_range_selection();
+        if !self.selected_only && self.selected_paths.is_empty() {
+            self.status_message = Some(String::from(
+                "Select candidates before enabling selected-only view.",
+            ));
+            return;
+        }
+
+        self.selected_only = !self.selected_only;
+        self.clamp_candidate_selection();
+        self.status_message = Some(if self.selected_only {
+            format!("Showing {} selected candidate(s).", self.selected_paths.len())
+        } else {
+            String::from("Selected-only view disabled.")
+        });
     }
 
     fn apply_new_scope(&mut self, root: PathBuf, record_history: bool) -> io::Result<()> {
@@ -1276,6 +1406,8 @@ impl App {
         self.discovery_error_count = 0;
         self.table_state.select(None);
         self.selected_paths.clear();
+        self.selected_only = false;
+        self.cancel_range_selection();
         self.drawer = None;
         self.query.clear();
         self.browse_path = root;
