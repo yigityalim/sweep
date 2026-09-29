@@ -566,15 +566,16 @@ impl App {
                 elapsed,
                 discovery_error_count,
             } => {
-                self.growth = load_growth_against_current(&self.root, &snapshot).unwrap_or_else(
-                    |error| GrowthData {
-                        diff: None,
-                        snapshot_count: 0,
-                        invalid_snapshot_count: 0,
-                        live_comparison: true,
-                        message: format!("Could not compare live growth: {error}"),
-                    },
-                );
+                self.growth =
+                    load_growth_against_current(&self.root, &snapshot).unwrap_or_else(|error| {
+                        GrowthData {
+                            diff: None,
+                            snapshot_count: 0,
+                            invalid_snapshot_count: 0,
+                            live_comparison: true,
+                            message: format!("Could not compare live growth: {error}"),
+                        }
+                    });
                 self.live_snapshot = Some(snapshot);
                 self.report = Some(report);
                 self.last_scan_elapsed = Some(elapsed);
@@ -1438,11 +1439,7 @@ fn compare_candidates(left: &ReportCandidate, right: &ReportCandidate, sort: Sor
     }
 }
 
-fn growth_delta_for(
-    diff: &SnapshotDiff,
-    relative_path: &str,
-    kind: &str,
-) -> Option<ByteDelta> {
+fn growth_delta_for(diff: &SnapshotDiff, relative_path: &str, kind: &str) -> Option<ByteDelta> {
     if let Some(candidate) = diff.changed.iter().find(|candidate| {
         candidate.relative_path == relative_path && candidate_kind_name(candidate.kind) == kind
     }) {
