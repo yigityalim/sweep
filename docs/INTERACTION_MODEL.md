@@ -146,6 +146,27 @@ o              reveal in Finder or open provider location
 
 Do not bind a single unmodified key to immediate permanent deletion. Cleanup remains plan-based and multi-stage.
 
+## Preview operations
+
+The current TUI includes read-only workflow previews before mutation exists:
+
+```text
+1  candidates
+2  browse
+3  growth
+4  history
+```
+
+Candidate selection uses `space`. `c` opens a side-panel cleanup preview. Only candidates already classified `safe` are eligible; review and protected candidates remain visible as excluded. Confirming the preview stops at a receipt-like boundary and explicitly reports that no files changed.
+
+Browse is bounded to the current scan scope. It supports parent/child navigation without following symlink directories. `o` reveals the selected path in Finder through `/usr/bin/open -R`.
+
+The action palette (`:`) exposes scope changes, report export, clipboard copy, Finder reveal, view navigation, rescan, and clean preview. Report export uses the canonical report model.
+
+Growth reads the latest two valid snapshots for the exact current scope and renders a descriptive diff. Invalid snapshots are ignored with an explicit count. History is an empty preview surface until a mutation engine can produce measured cleanup receipts.
+
+Option-left / option-right traverses scan-scope history. Changing scope always starts a fresh live scan.
+
 ## Explain view
 
 Explain must answer developer-specific questions rather than merely naming a cache:
