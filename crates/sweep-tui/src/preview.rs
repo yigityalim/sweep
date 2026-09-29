@@ -240,14 +240,23 @@ fn unique_path(directory: &Path, stem: &str, extension: &str) -> PathBuf {
         return direct;
     }
 
-    for suffix in 1_u32.. {
+    let mut suffix = 1_u64;
+    loop {
         let candidate = directory.join(format!("{stem}-{suffix}.{extension}"));
         if !candidate.exists() {
             return candidate;
         }
-    }
 
-    unreachable!("u32 report filename suffix space exhausted")
+        if suffix == u64::MAX {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
+            return directory.join(format!("{stem}-{nonce}.{extension}"));
+        }
+
+        suffix += 1;
+    }
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
