@@ -146,9 +146,7 @@ fn revalidate_candidate(root: &Path, candidate: &Candidate) -> CandidateRevalida
         if result.status == RevalidationStatus::Unchanged {
             result.status = RevalidationStatus::Unverifiable;
         }
-        result
-            .reasons
-            .push(RevalidationReason::TraversalIncomplete);
+        result.reasons.push(RevalidationReason::TraversalIncomplete);
         return result;
     }
 
@@ -164,9 +162,7 @@ fn revalidate_candidate(root: &Path, candidate: &Candidate) -> CandidateRevalida
 
     if candidate.subtree_metadata_fingerprint.as_deref() != Some(observed_fingerprint) {
         result.status = RevalidationStatus::Changed;
-        result
-            .reasons
-            .push(RevalidationReason::FingerprintChanged);
+        result.reasons.push(RevalidationReason::FingerprintChanged);
     }
 
     result
@@ -189,9 +185,7 @@ fn physical_parent_within_root(root: &Path, candidate: &Path) -> io::Result<bool
 mod tests {
     use std::{fs, os::unix::fs::symlink};
 
-    use sweep_core::{
-        CandidateKind, Decision, RecoveryContract, RecoveryKind,
-    };
+    use sweep_core::{CandidateKind, Decision, RecoveryContract, RecoveryKind};
     use tempfile::tempdir;
 
     use super::*;
