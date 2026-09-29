@@ -400,7 +400,12 @@ fn default_snapshot_path(snapshot: &Snapshot) -> io::Result<PathBuf> {
         .map(PathBuf::from)
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
     let directory = home.join("Library/Application Support/Sweep/snapshots");
-    let stem = format!("sweep-snapshot-{}", snapshot.created_unix_seconds);
+
+    available_snapshot_path(&directory, snapshot.created_unix_seconds)
+}
+
+fn available_snapshot_path(directory: &Path, created_unix_seconds: u64) -> io::Result<PathBuf> {
+    let stem = format!("sweep-snapshot-{created_unix_seconds}");
     let direct = directory.join(format!("{stem}.sweep.json"));
 
     if !direct.exists() {
@@ -414,9 +419,9 @@ fn default_snapshot_path(snapshot: &Snapshot) -> io::Result<PathBuf> {
             return Ok(candidate);
         }
 
-        suffix = suffix.checked_add(1).ok_or_else(|| {
-            io::Error::other("snapshot filename suffix space exhausted")
-        })?;
+        suffix = suffix
+            .checked_add(1)
+            .ok_or_else(|| io::Error::other("snapshot filename suffix space exhausted"))?;
     }
 }
 
@@ -688,4 +693,28 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
     drop(file);
 
     fs::rename(temporary, path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_default_path_does_not_overwrite_same_second_file() {
+        let directory = env::temp_dir().join(format!(
+            "sweep-cli-snapshot-path-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir_all(&directory).unwrap();
+
+        let direct = directory.join("sweep-snapshot-42.sweep.json");
+        fs::write(&direct, b"existing").unwrap();
+
+        let path = available_snapshot_path(&directory, 42).unwrap();
+
+        assert_eq!(path, directory.join("sweep-snapshot-42-1.sweep.json"));
+
+        fs::remove_dir_all(directory).unwrap();
+    }
 }
