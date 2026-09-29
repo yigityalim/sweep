@@ -701,10 +701,8 @@ mod tests {
 
     #[test]
     fn snapshot_default_path_does_not_overwrite_same_second_file() {
-        let directory = env::temp_dir().join(format!(
-            "sweep-cli-snapshot-path-{}",
-            std::process::id()
-        ));
+        let directory =
+            env::temp_dir().join(format!("sweep-cli-snapshot-path-{}", std::process::id()));
         let _ = fs::remove_dir_all(&directory);
         fs::create_dir_all(&directory).unwrap();
 
