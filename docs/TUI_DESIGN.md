@@ -204,7 +204,8 @@ The preview release deliberately exercises the future workflow without crossing 
 - Growth consumes validated read-only snapshots for the exact scope;
 - after a live scan, the latest persisted snapshot becomes a read-only baseline for per-candidate live deltas;
 - the candidate table and inspector may display those deltas, but growth never changes cleanup eligibility;
-- cleanup History remains empty until measured mutation receipts exist;
+- preview History may show volatile current-session receipts so the interaction can be tested, but those receipts are never persisted and always state that no files changed;
+- persistent cleanup History remains unavailable until measured mutation receipts exist;
 - report save/copy routes through the canonical report serializer;
 - copy/save key families expose text, Markdown, JSON, and TOML without duplicating serializers;
 - the action palette supports incremental text filtering;
