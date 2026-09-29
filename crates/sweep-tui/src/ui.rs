@@ -358,9 +358,18 @@ fn render_candidate_table(frame: &mut Frame<'_>, area: Rect, app: &mut App, them
             } else {
                 " "
             };
+            let growth = app.candidate_growth_delta(candidate);
+            let growth_label = growth
+                .map(format_byte_delta)
+                .unwrap_or_else(|| String::from("—"));
+            let growth_style = growth
+                .map(|delta| Style::default().fg(delta_color(delta.direction, theme)))
+                .unwrap_or_else(|| Style::default().fg(theme.muted()));
+
             Row::new(vec![
                 Cell::from(mark),
                 Cell::from(format_bytes(candidate.allocated_bytes_estimate)),
+                Cell::from(growth_label).style(growth_style),
                 Cell::from(candidate.decision.clone()).style(theme.decision(&candidate.decision)),
                 Cell::from(candidate.kind.clone()),
                 Cell::from(recovery_label(candidate)),
@@ -370,7 +379,15 @@ fn render_candidate_table(frame: &mut Frame<'_>, area: Rect, app: &mut App, them
         })
         .collect();
 
-    let header = Row::new(["", "ALLOCATED", "DECISION", "TYPE", "RECOVERY", "PATH"])
+    let header = Row::new([
+        "",
+        "ALLOCATED",
+        "Δ SNAPSHOT",
+        "DECISION",
+        "TYPE",
+        "RECOVERY",
+        "PATH",
+    ])
         .style(
             Style::default()
                 .fg(theme.muted())
@@ -411,6 +428,7 @@ fn render_candidate_table(frame: &mut Frame<'_>, area: Rect, app: &mut App, them
         [
             Constraint::Length(2),
             Constraint::Length(12),
+            Constraint::Length(13),
             Constraint::Length(11),
             Constraint::Length(17),
             Constraint::Length(18),
@@ -539,13 +557,21 @@ fn render_growth(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
         .constraints([Constraint::Length(4), Constraint::Min(5)])
         .split(area);
 
+    let comparison_label = if app.growth.live_comparison {
+        "LIVE VS SNAPSHOT"
+    } else {
+        "LATEST DIFF"
+    };
     let delta = format_delta(
         diff.summary.allocated_bytes_estimate_delta.direction,
         diff.summary.allocated_bytes_estimate_delta.bytes,
     );
     let summary = vec![
         Line::from(vec![
-            Span::styled("LATEST DIFF  ", Style::default().fg(theme.muted())),
+            Span::styled(
+                format!("{comparison_label}  "),
+                Style::default().fg(theme.muted()),
+            ),
             Span::styled(
                 format!(
                     "{} -> {}  {delta}",
@@ -1275,6 +1301,7 @@ fn candidate_lines(
             Style::default().fg(theme.text()),
             theme,
         ),
+        candidate_growth_field(candidate, theme),
         field(
             "traversal",
             if candidate.traversal_complete {
@@ -1336,6 +1363,16 @@ fn candidate_lines(
     }
 
     lines
+}
+
+fn candidate_growth_field(candidate: &ReportCandidate, theme: Theme) -> Line<'static> {
+    Line::from(vec![
+        Span::styled("growth      ", Style::default().fg(theme.muted())),
+        Span::styled(
+            candidate.path.clone(),
+            Style::default().fg(theme.background()),
+        ),
+    ])
 }
 
 fn evidence_summary(candidate: &ReportCandidate, theme: Theme) -> Line<'static> {
