@@ -121,6 +121,18 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
             Span::styled("   sort ", Style::default().fg(theme.muted())),
             Span::styled(app.sort.label(), Style::default().fg(theme.accent())),
         ]);
+        if app.selected_only {
+            scope_spans.extend([
+                Span::styled("   view ", Style::default().fg(theme.muted())),
+                Span::styled("selected", Style::default().fg(theme.safe())),
+            ]);
+        }
+        if app.range_selecting {
+            scope_spans.extend([
+                Span::styled("   mode ", Style::default().fg(theme.muted())),
+                Span::styled("range", Style::default().fg(theme.review())),
+            ]);
+        }
     }
 
     if let Some(message) = &app.status_message {
@@ -411,11 +423,13 @@ fn render_candidate_table(frame: &mut Frame<'_>, area: Rect, app: &mut App, them
         if marked == 0 {
             format!(" candidates  {} · {} ", indices.len(), visible_allocated)
         } else {
+            let range = if app.range_selecting { " · range" } else { "" };
             format!(
-                " candidates  {} · {} · {} selected ",
+                " candidates  {} · {} · {} selected{} ",
                 indices.len(),
                 visible_allocated,
-                marked
+                marked,
+                range
             )
         }
     } else {
@@ -835,8 +849,8 @@ fn clean_plan_lines(
             theme,
         ),
         field(
-            "eligible",
-            &plan.included.len().to_string(),
+            "enabled",
+            &format!("{} / {}", plan.enabled_count(), plan.included.len()),
             Style::default().fg(theme.safe()),
             theme,
         ),
@@ -852,7 +866,10 @@ fn clean_plan_lines(
         ),
         field(
             "estimate",
-            &format!("{} allocated", format_bytes(plan.allocated_bytes_estimate)),
+            &format!(
+                "{} allocated",
+                format_bytes(plan.allocated_bytes_estimate())
+            ),
             Style::default()
                 .fg(theme.bright_text())
                 .add_modifier(Modifier::BOLD),
@@ -862,23 +879,41 @@ fn clean_plan_lines(
         section("ELIGIBLE SAFE", theme),
     ];
 
-    for candidate in plan.included.iter().take(8) {
+    let window = 8usize;
+    let start = plan
+        .cursor
+        .saturating_sub(window.saturating_sub(1))
+        .min(plan.included.len().saturating_sub(window));
+    for (index, candidate) in plan.included.iter().enumerate().skip(start).take(window) {
+        let enabled = plan.is_enabled(candidate);
+        let current = index == plan.cursor;
+        let marker = if enabled { "[x]" } else { "[ ]" };
+        let prefix = if current { ">" } else { " " };
+        let style = if current {
+            theme.selected()
+        } else if enabled {
+            Style::default().fg(theme.safe())
+        } else {
+            Style::default().fg(theme.muted())
+        };
+
         lines.push(Line::from(vec![
-            Span::styled("+ ", Style::default().fg(theme.safe())),
+            Span::styled(format!("{prefix}{marker} "), style),
             Span::styled(
                 format!("{:>9}  ", format_bytes(candidate.allocated_bytes_estimate)),
-                Style::default().fg(theme.text()),
+                style,
             ),
-            Span::styled(
-                compact(&candidate.path, 34),
-                Style::default().fg(theme.muted()),
-            ),
+            Span::styled(compact(&candidate.path, 31), style),
         ]));
     }
 
-    if plan.included.len() > 8 {
+    if plan.included.len() > window {
         lines.push(Line::from(Span::styled(
-            format!("  … {} more safe candidate(s)", plan.included.len() - 8),
+            format!(
+                "  item {} / {} · j/k navigate · space toggle",
+                plan.cursor.saturating_add(1),
+                plan.included.len()
+            ),
             Style::default().fg(theme.muted()),
         )));
     }
@@ -902,7 +937,7 @@ fn clean_plan_lines(
 
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        "enter simulate plan   esc cancel",
+        "j/k move   space toggle   a all   u none   enter simulate   esc cancel",
         Style::default().fg(theme.accent()),
     )));
 
@@ -930,7 +965,7 @@ fn preview_receipt_lines(plan: &crate::app::CleanPlan, theme: Theme) -> Vec<Line
         Line::from(""),
         field(
             "safe items",
-            &plan.included.len().to_string(),
+            &plan.enabled_count().to_string(),
             Style::default().fg(theme.safe()),
             theme,
         ),
@@ -942,7 +977,7 @@ fn preview_receipt_lines(plan: &crate::app::CleanPlan, theme: Theme) -> Vec<Line
         ),
         field(
             "would target",
-            &format!("{} estimate", format_bytes(plan.allocated_bytes_estimate)),
+            &format!("{} estimate", format_bytes(plan.allocated_bytes_estimate())),
             Style::default().fg(theme.bright_text()),
             theme,
         ),
@@ -969,7 +1004,20 @@ fn render_drawer_overlay(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Th
 }
 
 fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    let line = if app.input_mode == InputMode::Search {
+    let line = if matches!(app.drawer, Some(Drawer::CleanPlan(_))) {
+        let mut spans = Vec::new();
+        spans.extend(key("j/k", "plan item", theme));
+        spans.extend(key("space", "toggle", theme));
+        spans.extend(key("a", "all", theme));
+        spans.extend(key("u", "none", theme));
+        spans.extend(key("enter", "simulate", theme));
+        spans.extend(key("esc", "cancel", theme));
+        Line::from(spans)
+    } else if matches!(app.drawer, Some(Drawer::PreviewReceipt(_))) {
+        let mut spans = Vec::new();
+        spans.extend(key("enter/esc", "close receipt", theme));
+        Line::from(spans)
+    } else if app.input_mode == InputMode::Search {
         Line::from(vec![
             Span::styled(
                 " / ",
@@ -1021,10 +1069,11 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
         match app.view {
             View::Candidates => {
                 spans.extend(key("j/k", "navigate", theme));
-                spans.extend(key("space", "select", theme));
-                spans.extend(key("c", "clean preview", theme));
-                spans.extend(key("o", "Finder", theme));
-                spans.extend(key("/", "search", theme));
+                spans.extend(key("space", "mark", theme));
+                spans.extend(key("v", "range", theme));
+                spans.extend(key("a", "safe all", theme));
+                spans.extend(key("x", "selected", theme));
+                spans.extend(key("c", "clean", theme));
             }
             View::Browse => {
                 spans.extend(key("h/l", "parent/enter", theme));
@@ -1082,12 +1131,21 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
         section("CANDIDATES", theme),
         Line::from(format!("{marker} j / k / arrows      move selection")),
         Line::from(format!("{marker} space               mark candidate")),
+        Line::from(format!("{marker} v                   range selection mode")),
         Line::from(format!(
-            "{marker} c                   open clean-plan preview"
+            "{marker} a                   select all visible safe"
+        )),
+        Line::from(format!("{marker} u                   clear selection")),
+        Line::from(format!("{marker} x                   selected-only view")),
+        Line::from(format!(
+            "{marker} c                   open editable clean preview"
         )),
         Line::from(format!("{marker} e / enter           inspect evidence")),
         Line::from(format!("{marker} j/k inside inspect  scroll evidence")),
         Line::from(format!("{marker} f / S               filter / sort")),
+        Line::from(format!(
+            "{marker} clean drawer        j/k, space, a, u, enter"
+        )),
         Line::from(""),
         section("BROWSE", theme),
         Line::from(format!("{marker} h / left            parent directory")),

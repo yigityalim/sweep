@@ -153,6 +153,9 @@ impl CommandFamily {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PaletteAction {
     PreviewClean,
+    SelectAllVisibleSafe,
+    ClearSelection,
+    ToggleSelectedOnly,
     RevealFinder,
     ChangeScope,
     UseBrowseAsScope,
@@ -171,8 +174,11 @@ pub(crate) enum PaletteAction {
 }
 
 impl PaletteAction {
-    pub(crate) const ALL: [Self; 16] = [
+    pub(crate) const ALL: [Self; 19] = [
         Self::PreviewClean,
+        Self::SelectAllVisibleSafe,
+        Self::ClearSelection,
+        Self::ToggleSelectedOnly,
         Self::RevealFinder,
         Self::ChangeScope,
         Self::UseBrowseAsScope,
@@ -193,6 +199,9 @@ impl PaletteAction {
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::PreviewClean => "Preview safe cleanup plan",
+            Self::SelectAllVisibleSafe => "Select all visible safe candidates",
+            Self::ClearSelection => "Clear candidate selection",
+            Self::ToggleSelectedOnly => "Toggle selected-only candidates",
             Self::RevealFinder => "Reveal selected path in Finder",
             Self::ChangeScope => "Change scan scope…",
             Self::UseBrowseAsScope => "Use browsed directory as scan scope",
@@ -217,13 +226,42 @@ pub(crate) struct CleanPlan {
     pub(crate) requested_count: usize,
     pub(crate) included: Vec<ReportCandidate>,
     pub(crate) excluded: Vec<ReportCandidate>,
-    pub(crate) allocated_bytes_estimate: u64,
+    pub(crate) enabled_paths: BTreeSet<String>,
+    pub(crate) cursor: usize,
+}
+
+impl CleanPlan {
+    pub(crate) fn enabled_count(&self) -> usize {
+        self.included
+            .iter()
+            .filter(|candidate| self.enabled_paths.contains(&candidate.path))
+            .count()
+    }
+
+    pub(crate) fn allocated_bytes_estimate(&self) -> u64 {
+        self.included
+            .iter()
+            .filter(|candidate| self.enabled_paths.contains(&candidate.path))
+            .fold(0_u64, |total, candidate| {
+                total.saturating_add(candidate.allocated_bytes_estimate)
+            })
+    }
+
+    pub(crate) fn is_enabled(&self, candidate: &ReportCandidate) -> bool {
+        self.enabled_paths.contains(&candidate.path)
+    }
 }
 
 #[derive(Clone, Debug)]
 pub(crate) enum Drawer {
     CleanPlan(CleanPlan),
     PreviewReceipt(CleanPlan),
+}
+
+#[derive(Clone, Debug)]
+struct RangeSelection {
+    anchor_path: String,
+    baseline: BTreeSet<String>,
 }
 
 enum ScanMessage {
@@ -259,6 +297,9 @@ pub(crate) struct App {
     pub(crate) inspect_scroll: u16,
     pub(crate) pending_family: Option<CommandFamily>,
     pub(crate) selected_paths: BTreeSet<String>,
+    pub(crate) selected_only: bool,
+    pub(crate) range_selecting: bool,
+    range_selection: Option<RangeSelection>,
     pub(crate) status_message: Option<String>,
     pub(crate) scanning: bool,
     pub(crate) scan_elapsed: Duration,
@@ -314,6 +355,9 @@ impl App {
             inspect_scroll: 0,
             pending_family: None,
             selected_paths: BTreeSet::new(),
+            selected_only: false,
+            range_selecting: false,
+            range_selection: None,
             status_message: None,
             scanning: false,
             scan_elapsed: Duration::ZERO,
@@ -390,6 +434,9 @@ impl App {
             .iter()
             .enumerate()
             .filter(|(_, candidate)| candidate_matches(candidate, self.filter, &query))
+            .filter(|(_, candidate)| {
+                !self.selected_only || self.selected_paths.contains(&candidate.path)
+            })
             .map(|(index, _)| index)
             .collect();
 
@@ -583,6 +630,8 @@ impl App {
                 self.scan_elapsed = elapsed;
                 self.discovery_error_count = discovery_error_count;
                 self.selected_paths.clear();
+                self.selected_only = false;
+                self.cancel_range_selection();
                 self.clamp_candidate_selection();
 
                 if !self.no_color {
@@ -672,6 +721,7 @@ impl App {
                 }
             }
             KeyCode::Char('/') if matches!(self.view, View::Candidates | View::Browse) => {
+                self.cancel_range_selection();
                 self.query.clear();
                 self.input_mode = InputMode::Search;
             }
@@ -701,22 +751,38 @@ impl App {
                     self.overlay = Some(Overlay::Inspect);
                 }
             }
-            KeyCode::Char(' ') => self.toggle_candidate_mark(),
+            KeyCode::Char(' ') => {
+                self.cancel_range_selection();
+                self.toggle_candidate_mark();
+            }
+            KeyCode::Char('v') => self.toggle_range_selection(),
+            KeyCode::Char('a') => self.select_all_visible_safe(),
+            KeyCode::Char('u') => self.clear_candidate_selection(),
+            KeyCode::Char('x') => self.toggle_selected_only(),
             KeyCode::Char('f') => {
+                self.cancel_range_selection();
                 self.filter = self.filter.next();
                 self.clamp_candidate_selection();
             }
             KeyCode::Char('S') => {
+                self.cancel_range_selection();
                 self.sort = self.sort.next();
                 self.clamp_candidate_selection();
             }
             KeyCode::Char('j') | KeyCode::Down => self.move_candidate_selection(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_candidate_selection(-1),
-            KeyCode::Home => self.select_candidate_first(),
-            KeyCode::End | KeyCode::Char('G') => self.select_candidate_last(),
+            KeyCode::Home => {
+                self.select_candidate_first();
+                self.extend_range_selection();
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                self.select_candidate_last();
+                self.extend_range_selection();
+            }
             KeyCode::Char('g') => {
                 if self.pending_g {
                     self.select_candidate_first();
+                    self.extend_range_selection();
                     self.pending_g = false;
                 } else {
                     self.pending_g = true;
@@ -861,12 +927,48 @@ impl App {
         };
 
         match drawer {
-            Drawer::CleanPlan(plan) => match key.code {
+            Drawer::CleanPlan(mut plan) => match key.code {
                 KeyCode::Esc => self.drawer = None,
+                KeyCode::Char('j') | KeyCode::Down => {
+                    if !plan.included.is_empty() {
+                        plan.cursor = (plan.cursor + 1).min(plan.included.len() - 1);
+                    }
+                    self.drawer = Some(Drawer::CleanPlan(plan));
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    plan.cursor = plan.cursor.saturating_sub(1);
+                    self.drawer = Some(Drawer::CleanPlan(plan));
+                }
+                KeyCode::Char(' ') => {
+                    if let Some(candidate) = plan.included.get(plan.cursor)
+                        && !plan.enabled_paths.insert(candidate.path.clone())
+                    {
+                        plan.enabled_paths.remove(&candidate.path);
+                    }
+                    self.drawer = Some(Drawer::CleanPlan(plan));
+                }
+                KeyCode::Char('a') => {
+                    plan.enabled_paths = plan
+                        .included
+                        .iter()
+                        .map(|candidate| candidate.path.clone())
+                        .collect();
+                    self.drawer = Some(Drawer::CleanPlan(plan));
+                }
+                KeyCode::Char('u') => {
+                    plan.enabled_paths.clear();
+                    self.drawer = Some(Drawer::CleanPlan(plan));
+                }
                 KeyCode::Enter => {
-                    self.drawer = Some(Drawer::PreviewReceipt(plan));
-                    self.status_message =
-                        Some(String::from("Preview complete. No files were changed."));
+                    if plan.enabled_count() == 0 {
+                        self.status_message =
+                            Some(String::from("Enable at least one safe candidate first."));
+                        self.drawer = Some(Drawer::CleanPlan(plan));
+                    } else {
+                        self.drawer = Some(Drawer::PreviewReceipt(plan));
+                        self.status_message =
+                            Some(String::from("Preview complete. No files were changed."));
+                    }
                 }
                 _ => {}
             },
@@ -955,6 +1057,18 @@ impl App {
                 self.set_view(View::Candidates);
                 self.open_clean_preview();
             }
+            PaletteAction::SelectAllVisibleSafe => {
+                self.set_view(View::Candidates);
+                self.select_all_visible_safe();
+            }
+            PaletteAction::ClearSelection => {
+                self.set_view(View::Candidates);
+                self.clear_candidate_selection();
+            }
+            PaletteAction::ToggleSelectedOnly => {
+                self.set_view(View::Candidates);
+                self.toggle_selected_only();
+            }
             PaletteAction::RevealFinder => self.reveal_selected(),
             PaletteAction::ChangeScope => {
                 self.path_input = self.root_label();
@@ -993,6 +1107,7 @@ impl App {
         self.drawer = None;
         self.pending_family = None;
         self.inspect_scroll = 0;
+        self.cancel_range_selection();
 
         match view {
             View::Candidates => self.clamp_candidate_selection(),
@@ -1192,6 +1307,128 @@ impl App {
         if !self.selected_paths.insert(path.clone()) {
             self.selected_paths.remove(&path);
         }
+
+        if self.selected_only {
+            self.clamp_candidate_selection();
+        }
+    }
+
+    fn toggle_range_selection(&mut self) {
+        if self.range_selection.is_some() {
+            self.cancel_range_selection();
+            self.status_message = Some(String::from("Range selection ended."));
+            return;
+        }
+
+        let Some(anchor_path) = self
+            .selected_candidate()
+            .map(|candidate| candidate.path.clone())
+        else {
+            return;
+        };
+
+        let baseline = self.selected_paths.clone();
+        self.range_selection = Some(RangeSelection {
+            anchor_path,
+            baseline,
+        });
+        self.range_selecting = true;
+        self.extend_range_selection();
+        self.status_message = Some(String::from(
+            "Range selection active. Move with j/k, arrows, gg or G.",
+        ));
+    }
+
+    fn cancel_range_selection(&mut self) {
+        self.range_selection = None;
+        self.range_selecting = false;
+    }
+
+    fn extend_range_selection(&mut self) {
+        let Some(range) = self.range_selection.clone() else {
+            return;
+        };
+        let Some(current_path) = self
+            .selected_candidate()
+            .map(|candidate| candidate.path.clone())
+        else {
+            return;
+        };
+        let Some(report) = self.report.as_ref() else {
+            return;
+        };
+
+        let indices = self.visible_indices();
+        let anchor = indices
+            .iter()
+            .position(|index| report.candidates[*index].path == range.anchor_path);
+        let current = indices
+            .iter()
+            .position(|index| report.candidates[*index].path == current_path);
+        let (Some(anchor), Some(current)) = (anchor, current) else {
+            self.cancel_range_selection();
+            return;
+        };
+
+        let start = anchor.min(current);
+        let end = anchor.max(current);
+        let mut selected = range.baseline;
+        for index in &indices[start..=end] {
+            selected.insert(report.candidates[*index].path.clone());
+        }
+        self.selected_paths = selected;
+    }
+
+    fn select_all_visible_safe(&mut self) {
+        self.cancel_range_selection();
+        let Some(report) = self.report.as_ref() else {
+            return;
+        };
+        let paths: Vec<_> = self
+            .visible_indices()
+            .into_iter()
+            .filter_map(|index| {
+                let candidate = &report.candidates[index];
+                (candidate.decision == "safe").then(|| candidate.path.clone())
+            })
+            .collect();
+
+        for path in &paths {
+            self.selected_paths.insert(path.clone());
+        }
+        self.status_message = Some(format!(
+            "Selected {} visible safe candidate(s).",
+            paths.len()
+        ));
+    }
+
+    fn clear_candidate_selection(&mut self) {
+        self.cancel_range_selection();
+        self.selected_paths.clear();
+        self.selected_only = false;
+        self.clamp_candidate_selection();
+        self.status_message = Some(String::from("Candidate selection cleared."));
+    }
+
+    fn toggle_selected_only(&mut self) {
+        self.cancel_range_selection();
+        if !self.selected_only && self.selected_paths.is_empty() {
+            self.status_message = Some(String::from(
+                "Select candidates before enabling selected-only view.",
+            ));
+            return;
+        }
+
+        self.selected_only = !self.selected_only;
+        self.clamp_candidate_selection();
+        self.status_message = Some(if self.selected_only {
+            format!(
+                "Showing {} selected candidate(s).",
+                self.selected_paths.len()
+            )
+        } else {
+            String::from("Selected-only view disabled.")
+        });
     }
 
     fn apply_new_scope(&mut self, root: PathBuf, record_history: bool) -> io::Result<()> {
@@ -1213,6 +1450,8 @@ impl App {
         self.discovery_error_count = 0;
         self.table_state.select(None);
         self.selected_paths.clear();
+        self.selected_only = false;
+        self.cancel_range_selection();
         self.drawer = None;
         self.query.clear();
         self.browse_path = root;
@@ -1288,6 +1527,7 @@ impl App {
     fn move_candidate_selection(&mut self, delta: isize) {
         let len = self.visible_indices().len();
         move_table_selection(&mut self.table_state, len, delta);
+        self.extend_range_selection();
     }
 
     fn move_browse_selection(&mut self, delta: isize) {
@@ -1375,15 +1615,17 @@ fn build_clean_plan(
         }
     }
 
-    let allocated_bytes_estimate = included.iter().fold(0_u64, |total, candidate| {
-        total.saturating_add(candidate.allocated_bytes_estimate)
-    });
+    let enabled_paths = included
+        .iter()
+        .map(|candidate| candidate.path.clone())
+        .collect();
 
     Some(CleanPlan {
         requested_count,
         included,
         excluded,
-        allocated_bytes_estimate,
+        enabled_paths,
+        cursor: 0,
     })
 }
 
@@ -1737,8 +1979,33 @@ mod tests {
         assert_eq!(plan.requested_count, 3);
         assert_eq!(plan.included.len(), 1);
         assert_eq!(plan.excluded.len(), 2);
-        assert_eq!(plan.allocated_bytes_estimate, 10);
+        assert_eq!(plan.enabled_count(), 1);
+        assert_eq!(plan.allocated_bytes_estimate(), 10);
         assert_eq!(plan.included[0].decision, "safe");
+    }
+
+    #[test]
+    fn clean_preview_can_disable_and_restore_safe_candidates() {
+        let data = report(vec![
+            candidate("~/Developer/a/target", "safe", 10),
+            candidate("~/Developer/b/target", "safe", 20),
+        ]);
+        let selected = data
+            .candidates
+            .iter()
+            .map(|candidate| candidate.path.clone())
+            .collect();
+
+        let mut plan = build_clean_plan(&data, &selected, None).unwrap();
+        let first = plan.included[0].path.clone();
+
+        plan.enabled_paths.remove(&first);
+        assert_eq!(plan.enabled_count(), 1);
+        assert_eq!(plan.allocated_bytes_estimate(), 20);
+
+        plan.enabled_paths.insert(first);
+        assert_eq!(plan.enabled_count(), 2);
+        assert_eq!(plan.allocated_bytes_estimate(), 30);
     }
 
     #[test]
