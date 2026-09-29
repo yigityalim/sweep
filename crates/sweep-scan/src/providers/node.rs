@@ -578,6 +578,11 @@ mod tests {
             "lockfileVersion: '9.0'\n",
         )
         .unwrap();
+        fs::write(
+            root.path().join("pnpm-workspace.yaml"),
+            "packages:\n  - 'packages/*'\n",
+        )
+        .unwrap();
 
         let package = root.path().join("packages/ui");
         fs::create_dir_all(package.join("node_modules")).unwrap();
@@ -596,9 +601,116 @@ mod tests {
             Some("pnpm install --frozen-lockfile")
         );
         assert!(assessment.evidence.iter().any(|evidence| {
-            evidence.code == "dependency_lockfile"
-                && evidence.detail.contains("ancestor repository scope")
+            evidence.code == "workspace_membership"
+                && evidence.detail.contains("pnpm-workspace.yaml")
         }));
+    }
+
+    #[test]
+    fn inherited_lockfile_without_workspace_membership_requires_review() {
+        let root = tempdir().unwrap();
+        fs::create_dir(root.path().join(".git")).unwrap();
+        fs::write(
+            root.path().join("pnpm-lock.yaml"),
+            "lockfileVersion: '9.0'\n",
+        )
+        .unwrap();
+
+        let package = root.path().join("packages/ui");
+        fs::create_dir_all(package.join("node_modules")).unwrap();
+        fs::write(package.join("package.json"), "{}").unwrap();
+
+        let assessment = NodeProvider
+            .assess(
+                &package.join("node_modules"),
+                &ProviderContext { home: None },
+            )
+            .unwrap();
+
+        assert_eq!(assessment.decision, Decision::Review);
+        assert!(assessment.evidence.iter().any(|evidence| {
+            evidence.code == "workspace_membership"
+                && evidence.status == sweep_core::EvidenceStatus::Unknown
+        }));
+    }
+
+    #[test]
+    fn unrelated_workspace_pattern_does_not_prove_membership() {
+        let root = tempdir().unwrap();
+        fs::create_dir(root.path().join(".git")).unwrap();
+        fs::write(
+            root.path().join("pnpm-lock.yaml"),
+            "lockfileVersion: '9.0'\n",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("pnpm-workspace.yaml"),
+            "packages:\n  - 'apps/*'\n",
+        )
+        .unwrap();
+
+        let package = root.path().join("packages/ui");
+        fs::create_dir_all(package.join("node_modules")).unwrap();
+        fs::write(package.join("package.json"), "{}").unwrap();
+
+        let assessment = NodeProvider
+            .assess(
+                &package.join("node_modules"),
+                &ProviderContext { home: None },
+            )
+            .unwrap();
+
+        assert_eq!(assessment.decision, Decision::Review);
+    }
+
+    #[test]
+    fn package_json_workspaces_prove_inherited_npm_lockfile() {
+        let root = tempdir().unwrap();
+        fs::create_dir(root.path().join(".git")).unwrap();
+        fs::write(
+            root.path().join("package.json"),
+            r#"{"workspaces":["packages/*"]}"#,
+        )
+        .unwrap();
+        fs::write(root.path().join("package-lock.json"), "{}").unwrap();
+
+        let package = root.path().join("packages/ui");
+        fs::create_dir_all(package.join("node_modules")).unwrap();
+        fs::write(package.join("package.json"), "{}").unwrap();
+
+        let assessment = NodeProvider
+            .assess(
+                &package.join("node_modules"),
+                &ProviderContext { home: None },
+            )
+            .unwrap();
+
+        assert_eq!(assessment.decision, Decision::Safe);
+        assert_eq!(assessment.recovery.command.as_deref(), Some("npm ci"));
+        assert!(assessment.evidence.iter().any(|evidence| {
+            evidence.code == "workspace_membership"
+                && evidence.status == sweep_core::EvidenceStatus::Proven
+        }));
+    }
+
+    #[test]
+    fn supported_workspace_matcher_is_conservative() {
+        assert_eq!(
+            simple_workspace_pattern_matches("packages/*", "packages/ui"),
+            Some(true)
+        );
+        assert_eq!(
+            simple_workspace_pattern_matches("packages/*", "packages/a/ui"),
+            Some(false)
+        );
+        assert_eq!(
+            simple_workspace_pattern_matches("packages/**", "packages/a/ui"),
+            Some(true)
+        );
+        assert_eq!(
+            simple_workspace_pattern_matches("packages/{a,b}", "packages/a"),
+            None
+        );
     }
 
     #[test]
