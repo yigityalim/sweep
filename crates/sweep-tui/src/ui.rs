@@ -961,15 +961,13 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
             ),
         ])
     } else if let Some(family) = app.pending_family {
-        let mut spans = vec![
-            Span::styled(
-                format!(" {} ", family.label()),
-                Style::default()
-                    .fg(theme.background())
-                    .bg(theme.accent())
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ];
+        let mut spans = vec![Span::styled(
+            format!(" {} ", family.label()),
+            Style::default()
+                .fg(theme.background())
+                .bg(theme.accent())
+                .add_modifier(Modifier::BOLD),
+        )];
         match family {
             CommandFamily::Yank => {
                 spans.extend(key("y", "text", theme));
@@ -1070,7 +1068,9 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
             "{marker} o                   reveal selected path in Finder"
         )),
         Line::from(format!("{marker} /                   live search")),
-        Line::from(format!("{marker} :                   searchable action palette")),
+        Line::from(format!(
+            "{marker} :                   searchable action palette"
+        )),
         Line::from(format!("{marker} y y/p/m/j/t         copy report/path")),
         Line::from(format!("{marker} s y/m/j/t           save report")),
         Line::from(format!("{marker} option-left/right   scope history")),
