@@ -101,6 +101,25 @@ pub(crate) fn save_report(report: &Report, format: OutputFormat) -> io::Result<P
     Ok(output)
 }
 
+pub(crate) fn save_snapshot(snapshot: &Snapshot) -> io::Result<PathBuf> {
+    snapshot.validate().map_err(io::Error::other)?;
+    let json = serde_json::to_string_pretty(snapshot).map_err(io::Error::other)?;
+    let home = env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+    let directory = home
+        .join("Library")
+        .join("Application Support")
+        .join("Sweep")
+        .join("snapshots");
+    fs::create_dir_all(&directory)?;
+
+    let stem = format!("sweep-snapshot-{}", snapshot.created_unix_seconds);
+    let output = unique_path(&directory, &stem, "sweep.json");
+    atomic_write(&output, json.as_bytes())?;
+    Ok(output)
+}
+
 pub(crate) fn copy_report(report: &Report, format: OutputFormat) -> io::Result<()> {
     let rendered = render(report, format).map_err(io::Error::other)?;
     copy_to_clipboard(&rendered)
@@ -158,7 +177,9 @@ pub(crate) fn load_growth(root: &Path) -> io::Result<GrowthData> {
             snapshot_count: 0,
             invalid_snapshot_count: 0,
             live_comparison: false,
-            message: String::from("No snapshots yet. Run sw snapshot for this scope twice."),
+            message: String::from(
+                "No snapshots yet. Save a baseline from Growth or run sw snapshot.",
+            ),
         });
     }
 
@@ -218,7 +239,9 @@ pub(crate) fn load_growth_against_current(
             snapshot_count: 0,
             invalid_snapshot_count: 0,
             live_comparison: true,
-            message: String::from("No snapshot baseline yet. Run sw snapshot for this scope."),
+            message: String::from(
+                "No snapshot baseline yet. Press b in Growth to save the live scan.",
+            ),
         });
     }
 
