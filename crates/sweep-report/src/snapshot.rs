@@ -143,6 +143,9 @@ pub enum SnapshotDiffFormat {
 #[derive(Debug, Eq, PartialEq)]
 pub enum SnapshotError {
     UnsupportedSchemaVersion(u32),
+    DuplicateCandidate(String),
+    SummaryMismatch,
+    InvalidCompleteness,
     RootMismatch { before: String, after: String },
 }
 
@@ -151,6 +154,18 @@ impl fmt::Display for SnapshotError {
         match self {
             Self::UnsupportedSchemaVersion(version) => {
                 write!(formatter, "unsupported snapshot schema version {version}")
+            }
+            Self::DuplicateCandidate(key) => {
+                write!(formatter, "snapshot contains a duplicate candidate key: {key:?}")
+            }
+            Self::SummaryMismatch => {
+                write!(formatter, "snapshot summary does not match its candidate set")
+            }
+            Self::InvalidCompleteness => {
+                write!(
+                    formatter,
+                    "snapshot is marked complete despite discovery or candidate traversal errors"
+                )
             }
             Self::RootMismatch { before, after } => {
                 write!(
@@ -201,6 +216,28 @@ impl Snapshot {
     pub fn validate(&self) -> Result<(), SnapshotError> {
         if self.schema_version != SNAPSHOT_SCHEMA_VERSION {
             return Err(SnapshotError::UnsupportedSchemaVersion(self.schema_version));
+        }
+
+        let mut keys = BTreeSet::new();
+        for candidate in &self.candidates {
+            let key = candidate.exact_key();
+            if !keys.insert(key.clone()) {
+                return Err(SnapshotError::DuplicateCandidate(key));
+            }
+        }
+
+        if SnapshotSummary::from_candidates(&self.candidates) != self.summary {
+            return Err(SnapshotError::SummaryMismatch);
+        }
+
+        if self.complete
+            && (self.discovery_error_count != 0
+                || self
+                    .candidates
+                    .iter()
+                    .any(|candidate| !candidate.traversal_complete))
+        {
+            return Err(SnapshotError::InvalidCompleteness);
         }
 
         Ok(())
@@ -396,6 +433,9 @@ fn diff_snapshots(before: &Snapshot, after: &Snapshot) -> SnapshotDiff {
                 !after_matched[*index]
                     && candidate.kind == before_candidate.kind
                     && candidate.identity == Some(identity)
+                    && before_candidate.subtree_metadata_fingerprint.is_some()
+                    && candidate.subtree_metadata_fingerprint
+                        == before_candidate.subtree_metadata_fingerprint
             })
             .collect();
 
@@ -951,6 +991,26 @@ mod tests {
 
         assert_eq!(diff.changed[0].relative_path, "b");
         assert_eq!(diff.changed[1].relative_path, "a");
+    }
+
+    #[test]
+    fn invalid_snapshot_summary_is_rejected() {
+        let mut snapshot = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
+        snapshot.summary.candidate_count = 2;
+
+        assert_eq!(snapshot.validate(), Err(SnapshotError::SummaryMismatch));
+    }
+
+    #[test]
+    fn move_detection_requires_matching_fingerprint() {
+        let before = snapshot(&[candidate("/workspace/old", Decision::Safe, 10, 7)]);
+        let after = snapshot(&[candidate("/workspace/new", Decision::Safe, 20, 7)]);
+
+        let diff = before.diff(&after).unwrap();
+
+        assert_eq!(diff.summary.moved_count, 0);
+        assert_eq!(diff.summary.removed_count, 1);
+        assert_eq!(diff.summary.added_count, 1);
     }
 
     #[test]
