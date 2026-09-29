@@ -8,6 +8,8 @@ Sweep is a macOS-first CLI that identifies developer-generated data only when it
 sw scan ~/Developer
 sw explain ~/Developer/project/target
 sw report ~/Developer --format markdown
+sw snapshot ~/Developer
+sw diff before.sweep.json after.sweep.json
 sw plan ~/Developer
 sw doctor
 ```
@@ -92,7 +94,23 @@ sw report ~/Developer --format markdown --redact-home
 
 `--copy` writes the report to the macOS clipboard. `--save` writes a timestamped file into `~/Downloads`. `--output <path>` writes atomically to a chosen location. `--redact-home` replaces the current home-directory prefix with `~` for shareable reports.
 
-The report schema is versioned independently from deletion plans so future snapshots and diffs can remain read-only data rather than mutation authority.
+The report schema is versioned independently from deletion plans so snapshots and diffs remain read-only data rather than mutation authority.
+
+### Snapshot and diff
+
+```console
+sw snapshot ~/Developer
+sw snapshot ~/Developer --output ~/Downloads/dev.sweep.json
+sw diff before.sweep.json after.sweep.json
+sw diff before.sweep.json after.sweep.json --format markdown
+sw diff before.sweep.json after.sweep.json --format json --output ~/Downloads/diff.json
+```
+
+A snapshot records candidate sizes, decisions, fingerprints, lightweight filesystem identity, and scan completeness. Without `--output`, snapshots are stored under `~/Library/Application Support/Sweep/snapshots`.
+
+`diff` compares two snapshots of the same root and reports growth, shrinkage, additions, removals, moves, and decision changes. Exact path+kind matches take precedence; unmatched candidates may be recognized as moves only when a unique filesystem `(device, inode)` identity matches.
+
+Snapshots are historical observations only. They cannot authorize cleanup, and an incomplete snapshot remains explicitly marked incomplete.
 
 ### Plan
 

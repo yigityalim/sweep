@@ -9,6 +9,14 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sweep_core::{Candidate, CandidateKind, Decision, EvidenceStatus, RecoveryKind};
 
+mod snapshot;
+
+pub use snapshot::{
+    AddedCandidate, ByteDelta, ChangedCandidate, DeltaDirection, MovedCandidate, RemovedCandidate,
+    SNAPSHOT_SCHEMA_VERSION, Snapshot, SnapshotCandidate, SnapshotDiff, SnapshotDiffFormat,
+    SnapshotDiffSummary, SnapshotError, SnapshotIdentity, SnapshotSummary, render_snapshot_diff,
+};
+
 pub const REPORT_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

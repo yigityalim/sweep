@@ -7,4 +7,4 @@ mod scanner;
 mod size;
 
 pub use rules::classify_path;
-pub use scanner::{ScanError, ScanOptions, scan};
+pub use scanner::{ScanError, ScanOptions, ScanResult, scan, scan_with_diagnostics};

@@ -1,7 +1,10 @@
 use std::{
     io,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use ignore::{WalkBuilder, WalkState};
@@ -23,6 +26,13 @@ impl Default for ScanOptions {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ScanResult {
+    pub candidates: Vec<Candidate>,
+    pub discovery_complete: bool,
+    pub discovery_error_count: usize,
+}
+
 #[derive(Debug)]
 pub enum ScanError {
     InvalidRoot(PathBuf, io::Error),
@@ -41,11 +51,16 @@ impl std::fmt::Display for ScanError {
 impl std::error::Error for ScanError {}
 
 pub fn scan(root: &Path, options: &ScanOptions) -> Result<Vec<Candidate>, ScanError> {
+    Ok(scan_with_diagnostics(root, options)?.candidates)
+}
+
+pub fn scan_with_diagnostics(root: &Path, options: &ScanOptions) -> Result<ScanResult, ScanError> {
     let root = root
         .canonicalize()
         .map_err(|error| ScanError::InvalidRoot(root.to_path_buf(), error))?;
 
     let paths = Arc::new(Mutex::new(Vec::<PathBuf>::new()));
+    let discovery_errors = Arc::new(AtomicUsize::new(0));
 
     let mut builder = WalkBuilder::new(&root);
     builder
@@ -57,12 +72,18 @@ pub fn scan(root: &Path, options: &ScanOptions) -> Result<Vec<Candidate>, ScanEr
     let walker = builder.build_parallel();
     walker.run(|| {
         let paths = Arc::clone(&paths);
+        let discovery_errors = Arc::clone(&discovery_errors);
         Box::new(move |entry| {
-            let Ok(entry) = entry else {
-                return WalkState::Continue;
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => {
+                    discovery_errors.fetch_add(1, Ordering::Relaxed);
+                    return WalkState::Continue;
+                }
             };
 
             let Some(file_type) = entry.file_type() else {
+                discovery_errors.fetch_add(1, Ordering::Relaxed);
                 return WalkState::Continue;
             };
 
@@ -106,7 +127,13 @@ pub fn scan(root: &Path, options: &ScanOptions) -> Result<Vec<Candidate>, ScanEr
             .then_with(|| left.path.cmp(&right.path))
     });
 
-    Ok(candidates)
+    let discovery_error_count = discovery_errors.load(Ordering::Relaxed);
+
+    Ok(ScanResult {
+        candidates,
+        discovery_complete: discovery_error_count == 0,
+        discovery_error_count,
+    })
 }
 
 #[cfg(test)]
@@ -116,6 +143,20 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    #[test]
+    fn normal_scan_reports_complete_discovery() {
+        let root = tempdir().unwrap();
+        fs::write(root.path().join("package.json"), "{}").unwrap();
+        fs::write(root.path().join("package-lock.json"), "{}").unwrap();
+        fs::create_dir(root.path().join("node_modules")).unwrap();
+
+        let result = scan_with_diagnostics(root.path(), &ScanOptions::default()).unwrap();
+
+        assert!(result.discovery_complete);
+        assert_eq!(result.discovery_error_count, 0);
+        assert_eq!(result.candidates.len(), 1);
+    }
 
     #[test]
     fn accepted_candidate_stops_nested_discovery() {
