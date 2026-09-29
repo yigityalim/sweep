@@ -1,0 +1,60 @@
+# Sweep Engineering Contract
+
+This file is normative for automated coding agents and contributors.
+
+## Product boundary
+
+Sweep is a proof-driven disk reclamation engine for developer Macs.
+
+Do not broaden Sweep into a generic macOS cleaner, app uninstaller, system optimizer, battery monitor, process monitor, or user-data janitor.
+
+## Non-negotiable invariants
+
+1. Discovery cannot mutate.
+2. Classification cannot mutate.
+3. Provider rules cannot mutate arbitrary paths.
+4. Planning cannot mutate.
+5. A future mutation engine must not discover new targets.
+6. Unknown evidence fails closed.
+7. Symlinks are never followed during candidate traversal.
+8. A directory name alone never proves recoverability.
+9. Filesystem identity is rebound immediately before mutation.
+10. A changed candidate is skipped, not reinterpreted.
+11. Authored, credential, deployment, session, and configuration data are protected.
+12. Shared roots such as `~/.local`, `~/.config`, and `~/.cache` are never selected from fuzzy application-name matching.
+13. Source-controlled descendants block automatic deletion.
+14. Nested repositories block automatic deletion.
+15. Reported allocated size is an estimate on filesystems with shared extents.
+16. Reclaimed bytes are measured after mutation rather than inferred from pre-delete sums.
+
+## Rust rules
+
+- Use Rust 2024 idioms.
+- Do not use `unsafe` without a documented platform requirement and a focused test.
+- Avoid panics for user-controlled filesystem state.
+- Preserve typed distinctions between `proven`, `refuted`, and `unknown`.
+- Do not collapse tri-state evidence into a boolean.
+- Prefer explicit domain types over strings at safety boundaries.
+- Avoid shell pipelines for filesystem mutation.
+- External commands must receive arguments as separate argv entries through `std::process::Command`.
+- Do not parse human-oriented command output when a stable machine interface exists.
+- No hidden network access.
+- No telemetry.
+
+## Rule acceptance
+
+A new `safe` rule must include:
+
+- a recognized producer;
+- a bounded root;
+- a documented recovery contract;
+- tracked-descendant protection where source control applies;
+- nested-repository protection;
+- provider-specific sensitive signatures;
+- incident tests for plausible false positives.
+
+If any required evidence cannot be obtained, classify as `review` or `protected`.
+
+## Review priority
+
+Changes touching classification, identity, plan serialization, symlink behavior, Git ownership, or future mutation code require line-by-line safety review.

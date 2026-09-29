@@ -1,0 +1,36 @@
+name: Bug report
+description: Report incorrect scanning, classification, sizing, or CLI behavior.
+title: "[BUG] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Include the smallest safe reproduction possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Sweep version, macOS version, architecture, filesystem, and installation method.
+    validations:
+      required: true

@@ -1,0 +1,33 @@
+name: Safety regression
+description: Report a path that Sweep incorrectly considers safe.
+title: "[SAFETY] "
+labels:
+  - safety
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not publish credentials, private keys, tokens, or sensitive file contents.
+        For an exploitable deletion boundary, use private vulnerability reporting instead.
+
+  - type: textarea
+    id: candidate
+    attributes:
+      label: Candidate path and classification
+      description: Include `sw explain <path> --json` after removing private information.
+    validations:
+      required: true
+
+  - type: textarea
+    id: recovery
+    attributes:
+      label: Why the data is not safely recoverable
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected classification
+    validations:
+      required: true
