@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::BTreeSet,
-    env, fs, io,
+    env, io,
     path::{Path, PathBuf},
     sync::mpsc::{self, Receiver, TryRecvError},
     thread,
