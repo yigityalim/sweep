@@ -889,7 +889,7 @@ fn clean_plan_lines(
         let current = index == plan.cursor;
         let marker = if enabled { "[x]" } else { "[ ]" };
         let prefix = if current {
-            if enabled { "▌" } else { ">" }
+            ">"
         } else {
             " "
         };
@@ -1011,7 +1011,20 @@ fn render_drawer_overlay(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Th
 }
 
 fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    let line = if app.input_mode == InputMode::Search {
+    let line = if matches!(app.drawer, Some(Drawer::CleanPlan(_))) {
+        let mut spans = Vec::new();
+        spans.extend(key("j/k", "plan item", theme));
+        spans.extend(key("space", "toggle", theme));
+        spans.extend(key("a", "all", theme));
+        spans.extend(key("u", "none", theme));
+        spans.extend(key("enter", "simulate", theme));
+        spans.extend(key("esc", "cancel", theme));
+        Line::from(spans)
+    } else if matches!(app.drawer, Some(Drawer::PreviewReceipt(_))) {
+        let mut spans = Vec::new();
+        spans.extend(key("enter/esc", "close receipt", theme));
+        Line::from(spans)
+    } else if app.input_mode == InputMode::Search {
         Line::from(vec![
             Span::styled(
                 " / ",
@@ -1063,10 +1076,11 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
         match app.view {
             View::Candidates => {
                 spans.extend(key("j/k", "navigate", theme));
-                spans.extend(key("space", "select", theme));
-                spans.extend(key("c", "clean preview", theme));
-                spans.extend(key("o", "Finder", theme));
-                spans.extend(key("/", "search", theme));
+                spans.extend(key("space", "mark", theme));
+                spans.extend(key("v", "range", theme));
+                spans.extend(key("a", "safe all", theme));
+                spans.extend(key("x", "selected", theme));
+                spans.extend(key("c", "clean", theme));
             }
             View::Browse => {
                 spans.extend(key("h/l", "parent/enter", theme));
@@ -1124,12 +1138,19 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
         section("CANDIDATES", theme),
         Line::from(format!("{marker} j / k / arrows      move selection")),
         Line::from(format!("{marker} space               mark candidate")),
+        Line::from(format!("{marker} v                   range selection mode")),
+        Line::from(format!("{marker} a                   select all visible safe")),
+        Line::from(format!("{marker} u                   clear selection")),
+        Line::from(format!("{marker} x                   selected-only view")),
         Line::from(format!(
-            "{marker} c                   open clean-plan preview"
+            "{marker} c                   open editable clean preview"
         )),
         Line::from(format!("{marker} e / enter           inspect evidence")),
         Line::from(format!("{marker} j/k inside inspect  scroll evidence")),
         Line::from(format!("{marker} f / S               filter / sort")),
+        Line::from(format!(
+            "{marker} clean drawer        j/k, space, a, u, enter"
+        )),
         Line::from(""),
         section("BROWSE", theme),
         Line::from(format!("{marker} h / left            parent directory")),
