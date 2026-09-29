@@ -10,7 +10,7 @@ use std::{
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
-     widgets::TableState,
+    widgets::TableState,
 };
 use sweep_report::{Report, ReportCandidate};
 use sweep_scan::{ScanOptions, scan_with_diagnostics};
