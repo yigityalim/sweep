@@ -7,7 +7,9 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Cell, Clear, Paragraph, Row, Table, Wrap},
 };
-use sweep_report::{DeltaDirection, Report, ReportCandidate, candidate_kind_name, decision_name};
+use sweep_report::{
+    ByteDelta, DeltaDirection, Report, ReportCandidate, candidate_kind_name, decision_name,
+};
 
 use crate::{
     app::{App, CommandFamily, Drawer, InputMode, Overlay, View},
@@ -335,7 +337,9 @@ fn render_candidates(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Th
         if let Some(drawer) = app.drawer.as_ref() {
             render_drawer(frame, body[1], drawer, theme);
         } else {
-            render_inspector(frame, body[1], app.selected_candidate(), theme);
+            let candidate = app.selected_candidate();
+            let growth = candidate.and_then(|candidate| app.candidate_growth_delta(candidate));
+            render_inspector(frame, body[1], candidate, growth, theme);
         }
     } else {
         render_candidate_table(frame, area, app, theme);
@@ -751,6 +755,7 @@ fn render_inspector(
     frame: &mut Frame<'_>,
     area: Rect,
     candidate: Option<&ReportCandidate>,
+    growth: Option<ByteDelta>,
     theme: Theme,
 ) {
     let block = Block::default()
@@ -770,7 +775,7 @@ fn render_inspector(
         return;
     };
 
-    let mut lines = candidate_lines(candidate, theme, false);
+    let mut lines = candidate_lines(candidate, growth, theme, false);
     let available = area.height.saturating_sub(2) as usize;
     lines.truncate(available);
 
@@ -1246,7 +1251,8 @@ fn render_inspect_overlay(frame: &mut Frame<'_>, area: Rect, app: &App, theme: T
     let popup = centered(area, 88, 30);
     frame.render_widget(Clear, popup);
 
-    let lines = candidate_lines(candidate, theme, true);
+    let growth = app.candidate_growth_delta(candidate);
+    let lines = candidate_lines(candidate, growth, theme, true);
     let visible_lines = popup.height.saturating_sub(2) as usize;
     let max_scroll = lines.len().saturating_sub(visible_lines) as u16;
     let scroll = app.inspect_scroll.min(max_scroll);
@@ -1269,6 +1275,7 @@ fn render_inspect_overlay(frame: &mut Frame<'_>, area: Rect, app: &App, theme: T
 
 fn candidate_lines(
     candidate: &ReportCandidate,
+    growth: Option<ByteDelta>,
     theme: Theme,
     expanded: bool,
 ) -> Vec<Line<'static>> {
@@ -1301,7 +1308,7 @@ fn candidate_lines(
             Style::default().fg(theme.text()),
             theme,
         ),
-        candidate_growth_field(candidate, theme),
+        candidate_growth_field(growth, theme),
         field(
             "traversal",
             if candidate.traversal_complete {
@@ -1365,14 +1372,21 @@ fn candidate_lines(
     lines
 }
 
-fn candidate_growth_field(candidate: &ReportCandidate, theme: Theme) -> Line<'static> {
-    Line::from(vec![
-        Span::styled("growth      ", Style::default().fg(theme.muted())),
-        Span::styled(
-            candidate.path.clone(),
-            Style::default().fg(theme.background()),
+fn candidate_growth_field(growth: Option<ByteDelta>, theme: Theme) -> Line<'static> {
+    match growth {
+        Some(delta) => field(
+            "growth",
+            &format!("{} vs snapshot", format_byte_delta(delta)),
+            Style::default().fg(delta_color(delta.direction, theme)),
+            theme,
         ),
-    ])
+        None => field(
+            "growth",
+            "— no snapshot baseline",
+            Style::default().fg(theme.muted()),
+            theme,
+        ),
+    }
 }
 
 fn evidence_summary(candidate: &ReportCandidate, theme: Theme) -> Line<'static> {
@@ -1551,6 +1565,10 @@ fn delta_color(direction: DeltaDirection, theme: Theme) -> ratatui::style::Color
         DeltaDirection::Decreased => theme.safe(),
         DeltaDirection::Unchanged => theme.muted(),
     }
+}
+
+fn format_byte_delta(delta: ByteDelta) -> String {
+    format_delta(delta.direction, delta.bytes)
 }
 
 fn format_delta(direction: DeltaDirection, bytes: u64) -> String {
