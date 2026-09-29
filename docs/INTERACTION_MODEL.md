@@ -268,14 +268,17 @@ Future history command:
 sw history
 ```
 
-Snapshots use a dedicated versioned schema.
+Snapshots use a dedicated versioned schema. New snapshots use schema v2; schema v1 remains readable for compatibility.
 
 Important properties:
 
 - imported snapshots are read-only;
+- new snapshots store candidate locations only as paths relative to the snapshot root; legacy v1 absolute candidate paths are accepted on read but never emitted by v2;
+- candidates that cannot be proven to reside under the requested snapshot root are omitted and force the snapshot incomplete;
 - discovery errors and incomplete candidate traversal keep the snapshot marked incomplete;
+- default snapshot filenames never overwrite an existing same-second snapshot; a numeric suffix is allocated instead;
 - a process interrupted before atomic write cannot leave a complete-looking snapshot;
-- diffs match path+kind first and only use filesystem identity for unique unmatched moves;
+- diffs match relative path+kind first and only use filesystem identity for unique unmatched moves;
 - snapshot roots must match before diffing;
 - growth is reported independently from cleanup eligibility.
 

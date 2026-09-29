@@ -9,7 +9,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sweep_core::{Candidate, CandidateKind, Decision, RecoveryKind};
 
-pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
+pub const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
+const MIN_SUPPORTED_SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Snapshot {
@@ -36,7 +37,8 @@ pub struct SnapshotSummary {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SnapshotCandidate {
     pub relative_path: String,
-    pub path: String,
+    #[serde(default, skip_serializing)]
+    pub path: Option<String>,
     pub kind: CandidateKind,
     pub decision: Decision,
     pub logical_bytes: u64,
@@ -197,12 +199,14 @@ impl Snapshot {
             .unwrap_or_default()
             .as_secs();
 
+        let source_candidate_count = candidates.len();
         let candidates: Vec<_> = candidates
             .iter()
-            .map(|candidate| SnapshotCandidate::from_candidate(root, candidate))
+            .filter_map(|candidate| SnapshotCandidate::from_candidate(root, candidate))
             .collect();
 
         let complete = discovery_complete
+            && candidates.len() == source_candidate_count
             && candidates
                 .iter()
                 .all(|candidate| candidate.traversal_complete);
@@ -220,7 +224,9 @@ impl Snapshot {
     }
 
     pub fn validate(&self) -> Result<(), SnapshotError> {
-        if self.schema_version != SNAPSHOT_SCHEMA_VERSION {
+        if !(MIN_SUPPORTED_SNAPSHOT_SCHEMA_VERSION..=SNAPSHOT_SCHEMA_VERSION)
+            .contains(&self.schema_version)
+        {
             return Err(SnapshotError::UnsupportedSchemaVersion(self.schema_version));
         }
 
@@ -302,17 +308,17 @@ impl SnapshotSummary {
 }
 
 impl SnapshotCandidate {
-    fn from_candidate(root: &Path, candidate: &Candidate) -> Self {
-        let relative = candidate.path.strip_prefix(root).unwrap_or(&candidate.path);
+    fn from_candidate(root: &Path, candidate: &Candidate) -> Option<Self> {
+        let relative = candidate.path.strip_prefix(root).ok()?;
         let relative_path = if relative.as_os_str().is_empty() {
             String::from(".")
         } else {
             relative.to_string_lossy().into_owned()
         };
 
-        Self {
+        Some(Self {
             relative_path,
-            path: candidate.path.to_string_lossy().into_owned(),
+            path: None,
             kind: candidate.kind,
             decision: candidate.decision,
             logical_bytes: candidate.logical_bytes,
@@ -327,7 +333,7 @@ impl SnapshotCandidate {
                     inode: identity.inode,
                 }),
             recovery_kind: candidate.recovery.kind.clone(),
-        }
+        })
     }
 
     fn exact_key(&self) -> String {
@@ -879,6 +885,63 @@ mod tests {
         assert_eq!(snapshot.summary.allocated_bytes_estimate, 60);
         assert_eq!(snapshot.summary.safe_allocated_bytes_estimate, 10);
         assert!(snapshot.complete);
+    }
+
+    #[test]
+    fn new_snapshot_serialization_omits_absolute_candidate_paths() {
+        let snapshot = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
+        let json = serde_json::to_value(&snapshot).unwrap();
+
+        assert_eq!(snapshot.schema_version, SNAPSHOT_SCHEMA_VERSION);
+        assert_eq!(snapshot.candidates[0].relative_path, "a");
+        assert_eq!(snapshot.candidates[0].path, None);
+        assert!(json["candidates"][0].get("path").is_none());
+    }
+
+    #[test]
+    fn legacy_schema_one_snapshot_with_absolute_path_still_validates() {
+        let snapshot = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
+        let mut json = serde_json::to_value(&snapshot).unwrap();
+        json["schema_version"] = serde_json::json!(1);
+        json["candidates"][0]["path"] = serde_json::json!("/workspace/a");
+
+        let decoded: Snapshot = serde_json::from_value(json).unwrap();
+        let reserialized = serde_json::to_value(&decoded).unwrap();
+
+        assert_eq!(decoded.schema_version, 1);
+        assert_eq!(decoded.candidates[0].path.as_deref(), Some("/workspace/a"));
+        assert_eq!(decoded.validate(), Ok(()));
+        assert!(reserialized["candidates"][0].get("path").is_none());
+    }
+
+    #[test]
+    fn candidate_outside_snapshot_root_is_omitted_and_marks_snapshot_incomplete() {
+        let snapshot = Snapshot::from_candidates(
+            Path::new("/workspace"),
+            &[
+                candidate("/workspace/a", Decision::Safe, 10, 1),
+                candidate("/outside/b", Decision::Safe, 20, 2),
+            ],
+            true,
+            0,
+        );
+
+        assert_eq!(snapshot.candidates.len(), 1);
+        assert_eq!(snapshot.candidates[0].relative_path, "a");
+        assert!(!snapshot.complete);
+    }
+
+    #[test]
+    fn unsupported_snapshot_schema_is_rejected() {
+        let mut snapshot = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
+        snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION + 1;
+
+        assert_eq!(
+            snapshot.validate(),
+            Err(SnapshotError::UnsupportedSchemaVersion(
+                SNAPSHOT_SCHEMA_VERSION + 1
+            ))
+        );
     }
 
     #[test]
