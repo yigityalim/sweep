@@ -434,6 +434,9 @@ impl App {
             .iter()
             .enumerate()
             .filter(|(_, candidate)| candidate_matches(candidate, self.filter, &query))
+            .filter(|(_, candidate)| {
+                !self.selected_only || self.selected_paths.contains(&candidate.path)
+            })
             .map(|(index, _)| index)
             .collect();
 
@@ -745,22 +748,38 @@ impl App {
                     self.overlay = Some(Overlay::Inspect);
                 }
             }
-            KeyCode::Char(' ') => self.toggle_candidate_mark(),
+            KeyCode::Char(' ') => {
+                self.cancel_range_selection();
+                self.toggle_candidate_mark();
+            }
+            KeyCode::Char('v') => self.toggle_range_selection(),
+            KeyCode::Char('a') => self.select_all_visible_safe(),
+            KeyCode::Char('u') => self.clear_candidate_selection(),
+            KeyCode::Char('x') => self.toggle_selected_only(),
             KeyCode::Char('f') => {
+                self.cancel_range_selection();
                 self.filter = self.filter.next();
                 self.clamp_candidate_selection();
             }
             KeyCode::Char('S') => {
+                self.cancel_range_selection();
                 self.sort = self.sort.next();
                 self.clamp_candidate_selection();
             }
             KeyCode::Char('j') | KeyCode::Down => self.move_candidate_selection(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_candidate_selection(-1),
-            KeyCode::Home => self.select_candidate_first(),
-            KeyCode::End | KeyCode::Char('G') => self.select_candidate_last(),
+            KeyCode::Home => {
+                self.select_candidate_first();
+                self.extend_range_selection();
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                self.select_candidate_last();
+                self.extend_range_selection();
+            }
             KeyCode::Char('g') => {
                 if self.pending_g {
                     self.select_candidate_first();
+                    self.extend_range_selection();
                     self.pending_g = false;
                 } else {
                     self.pending_g = true;
@@ -1332,6 +1351,7 @@ impl App {
     fn move_candidate_selection(&mut self, delta: isize) {
         let len = self.visible_indices().len();
         move_table_selection(&mut self.table_state, len, delta);
+        self.extend_range_selection();
     }
 
     fn move_browse_selection(&mut self, delta: isize) {
