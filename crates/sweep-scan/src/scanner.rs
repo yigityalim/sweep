@@ -8,7 +8,7 @@ use ignore::{WalkBuilder, WalkState};
 use rayon::prelude::*;
 use sweep_core::Candidate;
 
-use crate::rules::{candidate_kind, classify_path};
+use crate::{providers::candidate_kind, rules::classify_path};
 
 #[derive(Clone, Debug)]
 pub struct ScanOptions {

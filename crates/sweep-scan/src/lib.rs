@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod git;
+mod providers;
 mod rules;
 mod scanner;
 mod size;

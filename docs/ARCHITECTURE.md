@@ -25,7 +25,7 @@ It does not recursively walk the filesystem and does not invoke deletion.
 Observation layer:
 
 - candidate discovery;
-- provider rules;
+- provider engine;
 - Git ownership checks;
 - size accounting;
 - no-follow traversal.
@@ -68,16 +68,31 @@ The mutation engine receives an already-approved plan. It must not recursively d
 
 ## Provider model
 
-Rules are provider-specific because "generated" is contextual.
+Generated state is contextual, so candidate recognition is owned by providers instead of a shared directory-name switch.
 
-Examples:
+Each provider returns an assessment containing:
 
 ```text
-Cargo project + target + no protected deployment material
-Node package + node_modules + Git ownership evidence
-Zig project + .zig-cache + Git ownership evidence
-Swift package + .build + Git ownership evidence
+candidate kind
+recovery contract
+decision floor
+evidence
+Git evidence policy
 ```
+
+Current providers:
+
+```text
+Node      package.json + node_modules/.next/.turbo
+Cargo     Cargo.toml + target
+Zig       build.zig + .zig-cache/zig-out
+SwiftPM   Package.swift + .build
+Xcode     ~/Library/Developer/Xcode/DerivedData/<entry>
+```
+
+Project-scoped providers require Git ownership evidence before becoming safe. Xcode DerivedData declares Git evidence not applicable because its recovery boundary is the Xcode-managed DerivedData root rather than a source repository.
+
+Provider-specific protection is part of the provider assessment. For example, the Cargo provider protects `target` when `target/deploy/*-keypair.json` exists and lowers the decision to review when that protected subtree cannot be inspected conclusively.
 
 A generic rule such as "directory named build is safe" is intentionally forbidden.
 

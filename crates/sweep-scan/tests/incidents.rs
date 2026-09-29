@@ -107,3 +107,23 @@ fn tracked_candidate_is_protected() {
 
     assert_eq!(candidate.decision, Decision::Protected);
 }
+
+#[test]
+fn ignored_node_modules_without_lockfile_requires_review() {
+    let repo = tempdir().unwrap();
+    init_git(repo.path());
+
+    fs::write(repo.path().join("package.json"), "{}").unwrap();
+    fs::write(repo.path().join(".gitignore"), "/node_modules\n").unwrap();
+    fs::create_dir_all(repo.path().join("node_modules/pkg")).unwrap();
+    fs::write(
+        repo.path().join("node_modules/pkg/index.js"),
+        "module.exports = 1",
+    )
+    .unwrap();
+
+    let candidate = classify_path(&repo.path().join("node_modules"));
+
+    assert_eq!(candidate.kind, CandidateKind::NodeModules);
+    assert_eq!(candidate.decision, Decision::Review);
+}
