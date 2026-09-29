@@ -955,6 +955,17 @@ mod tests {
     }
 
     #[test]
+    fn imported_snapshot_rejects_empty_relative_path() {
+        let mut snapshot = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
+        snapshot.candidates[0].relative_path.clear();
+
+        assert_eq!(
+            snapshot.validate(),
+            Err(SnapshotError::InvalidRelativePath(String::new()))
+        );
+    }
+
+    #[test]
     fn imported_snapshot_rejects_absolute_relative_path() {
         let mut snapshot = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
         snapshot.candidates[0].relative_path = String::from("/workspace/a");
