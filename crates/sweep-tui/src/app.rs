@@ -251,11 +251,7 @@ impl App {
                 let started = Instant::now();
                 let message = match scan_with_diagnostics(&root, &ScanOptions::default()) {
                     Ok(scan) => ScanMessage::Finished {
-                        report: Report::from_candidates(
-                            &root,
-                            &scan.candidates,
-                            home.as_deref(),
-                        ),
+                        report: Report::from_candidates(&root, &scan.candidates, home.as_deref()),
                         elapsed: started.elapsed(),
                         discovery_error_count: scan.discovery_error_count,
                     },
@@ -280,9 +276,9 @@ impl App {
         let message = match receiver.try_recv() {
             Ok(message) => Some(message),
             Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                Some(ScanMessage::Failed(String::from("scan worker disconnected")))
-            }
+            Err(TryRecvError::Disconnected) => Some(ScanMessage::Failed(String::from(
+                "scan worker disconnected",
+            ))),
         };
 
         let Some(message) = message else {
@@ -397,7 +393,9 @@ impl App {
                 self.clamp_selection();
             }
             KeyCode::Char(character)
-                if !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
             {
                 self.query.push(character);
                 self.clamp_selection();
@@ -438,8 +436,11 @@ impl App {
     fn clamp_selection(&mut self) {
         let len = self.visible_indices().len();
         let selected = self.table_state.selected().unwrap_or(0);
-        self.table_state
-            .select(if len == 0 { None } else { Some(selected.min(len - 1)) });
+        self.table_state.select(if len == 0 {
+            None
+        } else {
+            Some(selected.min(len - 1))
+        });
     }
 }
 
@@ -481,11 +482,16 @@ fn compare_candidates(left: &ReportCandidate, right: &ReportCandidate, sort: Sor
             .then_with(|| left.path.cmp(&right.path)),
         SortKey::Decision => decision_rank(&left.decision)
             .cmp(&decision_rank(&right.decision))
-            .then_with(|| right.allocated_bytes_estimate.cmp(&left.allocated_bytes_estimate)),
-        SortKey::Kind => left
-            .kind
-            .cmp(&right.kind)
-            .then_with(|| right.allocated_bytes_estimate.cmp(&left.allocated_bytes_estimate)),
+            .then_with(|| {
+                right
+                    .allocated_bytes_estimate
+                    .cmp(&left.allocated_bytes_estimate)
+            }),
+        SortKey::Kind => left.kind.cmp(&right.kind).then_with(|| {
+            right
+                .allocated_bytes_estimate
+                .cmp(&left.allocated_bytes_estimate)
+        }),
         SortKey::Path => left.path.cmp(&right.path),
     }
 }
@@ -534,8 +540,16 @@ mod tests {
 
         assert!(candidate_matches(&safe, CandidateFilter::Safe, "cargo"));
         assert!(!candidate_matches(&review, CandidateFilter::Safe, "cargo"));
-        assert!(candidate_matches(&safe, CandidateFilter::All, "git_ignored"));
-        assert!(!candidate_matches(&safe, CandidateFilter::All, "node_modules"));
+        assert!(candidate_matches(
+            &safe,
+            CandidateFilter::All,
+            "git_ignored"
+        ));
+        assert!(!candidate_matches(
+            &safe,
+            CandidateFilter::All,
+            "node_modules"
+        ));
     }
 
     #[test]
