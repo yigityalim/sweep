@@ -402,10 +402,6 @@ impl App {
         self.growth.diff.as_ref()
     }
 
-    pub(crate) fn candidate_marked(&self, path: &str) -> bool {
-        self.selected_paths.contains(path)
-    }
-
     pub(crate) fn candidate_decision_for_path(&self, path: &Path) -> Option<&str> {
         let display = display_path(path);
         self.report
