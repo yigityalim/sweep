@@ -457,7 +457,9 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
         Line::from(""),
         Line::from(Span::styled(
             "View",
-            Style::default().fg(theme.accent()).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.accent())
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(format!("{marker} /                  live search")),
         Line::from(format!("{marker} f                  cycle decision filter")),
@@ -475,7 +477,9 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
         Line::from(""),
         Line::from(Span::styled(
             "Accessibility",
-            Style::default().fg(theme.accent()).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.accent())
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from("NO_COLOR=1 disables color. SWEEP_ASCII=1 uses ASCII markers."),
         Line::from(""),
@@ -647,7 +651,9 @@ fn render_too_small(frame: &mut Frame<'_>, area: Rect, theme: Theme) {
     let message = Paragraph::new(vec![
         Line::from(Span::styled(
             "Sweep needs a little more room.",
-            Style::default().fg(theme.text()).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.text())
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(Span::styled(
