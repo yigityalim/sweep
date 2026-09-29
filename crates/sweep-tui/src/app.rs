@@ -153,6 +153,9 @@ impl CommandFamily {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PaletteAction {
     PreviewClean,
+    SelectAllVisibleSafe,
+    ClearSelection,
+    ToggleSelectedOnly,
     RevealFinder,
     ChangeScope,
     UseBrowseAsScope,
@@ -171,8 +174,11 @@ pub(crate) enum PaletteAction {
 }
 
 impl PaletteAction {
-    pub(crate) const ALL: [Self; 16] = [
+    pub(crate) const ALL: [Self; 19] = [
         Self::PreviewClean,
+        Self::SelectAllVisibleSafe,
+        Self::ClearSelection,
+        Self::ToggleSelectedOnly,
         Self::RevealFinder,
         Self::ChangeScope,
         Self::UseBrowseAsScope,
@@ -193,6 +199,9 @@ impl PaletteAction {
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::PreviewClean => "Preview safe cleanup plan",
+            Self::SelectAllVisibleSafe => "Select all visible safe candidates",
+            Self::ClearSelection => "Clear candidate selection",
+            Self::ToggleSelectedOnly => "Toggle selected-only candidates",
             Self::RevealFinder => "Reveal selected path in Finder",
             Self::ChangeScope => "Change scan scope…",
             Self::UseBrowseAsScope => "Use browsed directory as scan scope",
@@ -217,13 +226,42 @@ pub(crate) struct CleanPlan {
     pub(crate) requested_count: usize,
     pub(crate) included: Vec<ReportCandidate>,
     pub(crate) excluded: Vec<ReportCandidate>,
-    pub(crate) allocated_bytes_estimate: u64,
+    pub(crate) enabled_paths: BTreeSet<String>,
+    pub(crate) cursor: usize,
+}
+
+impl CleanPlan {
+    pub(crate) fn enabled_count(&self) -> usize {
+        self.included
+            .iter()
+            .filter(|candidate| self.enabled_paths.contains(&candidate.path))
+            .count()
+    }
+
+    pub(crate) fn allocated_bytes_estimate(&self) -> u64 {
+        self.included
+            .iter()
+            .filter(|candidate| self.enabled_paths.contains(&candidate.path))
+            .fold(0_u64, |total, candidate| {
+                total.saturating_add(candidate.allocated_bytes_estimate)
+            })
+    }
+
+    pub(crate) fn is_enabled(&self, candidate: &ReportCandidate) -> bool {
+        self.enabled_paths.contains(&candidate.path)
+    }
 }
 
 #[derive(Clone, Debug)]
 pub(crate) enum Drawer {
     CleanPlan(CleanPlan),
     PreviewReceipt(CleanPlan),
+}
+
+#[derive(Clone, Debug)]
+struct RangeSelection {
+    anchor_path: String,
+    baseline: BTreeSet<String>,
 }
 
 enum ScanMessage {
@@ -259,6 +297,9 @@ pub(crate) struct App {
     pub(crate) inspect_scroll: u16,
     pub(crate) pending_family: Option<CommandFamily>,
     pub(crate) selected_paths: BTreeSet<String>,
+    pub(crate) selected_only: bool,
+    pub(crate) range_selecting: bool,
+    range_selection: Option<RangeSelection>,
     pub(crate) status_message: Option<String>,
     pub(crate) scanning: bool,
     pub(crate) scan_elapsed: Duration,
@@ -314,6 +355,9 @@ impl App {
             inspect_scroll: 0,
             pending_family: None,
             selected_paths: BTreeSet::new(),
+            selected_only: false,
+            range_selecting: false,
+            range_selection: None,
             status_message: None,
             scanning: false,
             scan_elapsed: Duration::ZERO,
