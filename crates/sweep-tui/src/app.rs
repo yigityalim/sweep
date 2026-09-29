@@ -940,10 +940,10 @@ impl App {
                     self.drawer = Some(Drawer::CleanPlan(plan));
                 }
                 KeyCode::Char(' ') => {
-                    if let Some(candidate) = plan.included.get(plan.cursor) {
-                        if !plan.enabled_paths.insert(candidate.path.clone()) {
-                            plan.enabled_paths.remove(&candidate.path);
-                        }
+                    if let Some(candidate) = plan.included.get(plan.cursor)
+                        && !plan.enabled_paths.insert(candidate.path.clone())
+                    {
+                        plan.enabled_paths.remove(&candidate.path);
                     }
                     self.drawer = Some(Drawer::CleanPlan(plan));
                 }
