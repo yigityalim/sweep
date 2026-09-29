@@ -201,7 +201,10 @@ The preview release deliberately exercises the future workflow without crossing 
 - scope changes discard old live authority and start a new scan;
 - Growth consumes validated read-only snapshots for the exact scope;
 - cleanup History remains empty until measured mutation receipts exist;
-- report save/copy routes through the canonical report serializer.
+- report save/copy routes through the canonical report serializer;
+- copy/save key families expose text, Markdown, JSON, and TOML without duplicating serializers;
+- the action palette supports incremental text filtering;
+- the full evidence inspector scrolls independently from candidate selection and summarizes proven/unknown/refuted evidence counts.
 
 ## Future layers
 

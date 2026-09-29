@@ -10,7 +10,7 @@ use ratatui::{
 use sweep_report::{DeltaDirection, Report, ReportCandidate, candidate_kind_name, decision_name};
 
 use crate::{
-    app::{App, Drawer, InputMode, Overlay, PaletteAction, View},
+    app::{App, CommandFamily, Drawer, InputMode, Overlay, View},
     theme::Theme,
 };
 
@@ -960,6 +960,31 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
                 Style::default().fg(theme.muted()),
             ),
         ])
+    } else if let Some(family) = app.pending_family {
+        let mut spans = vec![Span::styled(
+            format!(" {} ", family.label()),
+            Style::default()
+                .fg(theme.background())
+                .bg(theme.accent())
+                .add_modifier(Modifier::BOLD),
+        )];
+        match family {
+            CommandFamily::Yank => {
+                spans.extend(key("y", "text", theme));
+                spans.extend(key("p", "path", theme));
+                spans.extend(key("m", "markdown", theme));
+                spans.extend(key("j", "json", theme));
+                spans.extend(key("t", "toml", theme));
+            }
+            CommandFamily::Save => {
+                spans.extend(key("y", "text", theme));
+                spans.extend(key("m", "markdown", theme));
+                spans.extend(key("j", "json", theme));
+                spans.extend(key("t", "toml", theme));
+            }
+        }
+        spans.extend(key("esc", "cancel", theme));
+        Line::from(spans)
     } else {
         let mut spans = Vec::new();
         match app.view {
@@ -981,6 +1006,7 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
             }
             View::History => {}
         }
+        spans.extend(key("y/s", "copy/save", theme));
         spans.extend(key("1-4", "views", theme));
         spans.extend(key(":", "actions", theme));
         spans.extend(key("?", "help", theme));
@@ -1029,6 +1055,7 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
             "{marker} c                   open clean-plan preview"
         )),
         Line::from(format!("{marker} e / enter           inspect evidence")),
+        Line::from(format!("{marker} j/k inside inspect  scroll evidence")),
         Line::from(format!("{marker} f / S               filter / sort")),
         Line::from(""),
         section("BROWSE", theme),
@@ -1041,7 +1068,11 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
             "{marker} o                   reveal selected path in Finder"
         )),
         Line::from(format!("{marker} /                   live search")),
-        Line::from(format!("{marker} :                   action palette")),
+        Line::from(format!(
+            "{marker} :                   searchable action palette"
+        )),
+        Line::from(format!("{marker} y y/p/m/j/t         copy report/path")),
+        Line::from(format!("{marker} s y/m/j/t           save report")),
         Line::from(format!("{marker} option-left/right   scope history")),
         Line::from(format!(
             "{marker} R                   rescan / reload growth"
@@ -1072,32 +1103,58 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
 }
 
 fn render_palette(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    let popup = centered(area, 72, 18);
+    let popup = centered(area, 76, 24);
     frame.render_widget(Clear, popup);
 
-    let mut lines = Vec::new();
-    for (index, action) in PaletteAction::ALL.iter().enumerate() {
-        let selected = index == app.palette_index;
-        let prefix = if selected {
-            if app.ascii { "> " } else { "▌ " }
-        } else {
-            "  "
-        };
-        let style = if selected {
-            theme.selected()
-        } else {
-            Style::default().fg(theme.text())
-        };
+    let actions = app.visible_palette_actions();
+    let mut lines = vec![
+        Line::from(vec![
+            Span::styled(" : ", Style::default().fg(theme.accent())),
+            Span::styled(
+                if app.palette_query.is_empty() {
+                    String::from("type to filter actions")
+                } else {
+                    app.palette_query.clone()
+                },
+                Style::default().fg(if app.palette_query.is_empty() {
+                    theme.muted()
+                } else {
+                    theme.text()
+                }),
+            ),
+        ]),
+        Line::from(""),
+    ];
 
+    if actions.is_empty() {
         lines.push(Line::from(Span::styled(
-            format!("{prefix}{}", action.label()),
-            style,
+            "  no matching actions",
+            Style::default().fg(theme.muted()),
         )));
+    } else {
+        for (index, action) in actions.iter().enumerate() {
+            let selected = index == app.palette_index;
+            let prefix = if selected {
+                if app.ascii { "> " } else { "▌ " }
+            } else {
+                "  "
+            };
+            let style = if selected {
+                theme.selected()
+            } else {
+                Style::default().fg(theme.text())
+            };
+
+            lines.push(Line::from(Span::styled(
+                format!("{prefix}{}", action.label()),
+                style,
+            )));
+        }
     }
 
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        "j/k choose   enter run   esc close",
+        "↑/↓ choose   type filter   backspace edit   enter run   esc close",
         Style::default().fg(theme.muted()),
     )));
 
@@ -1163,12 +1220,18 @@ fn render_inspect_overlay(frame: &mut Frame<'_>, area: Rect, app: &App, theme: T
     let popup = centered(area, 88, 30);
     frame.render_widget(Clear, popup);
 
+    let lines = candidate_lines(candidate, theme, true);
+    let visible_lines = popup.height.saturating_sub(2) as usize;
+    let max_scroll = lines.len().saturating_sub(visible_lines) as u16;
+    let scroll = app.inspect_scroll.min(max_scroll);
+
     frame.render_widget(
-        Paragraph::new(Text::from(candidate_lines(candidate, theme, true)))
+        Paragraph::new(Text::from(lines))
+            .scroll((scroll, 0))
             .wrap(Wrap { trim: false })
             .block(
                 Block::default()
-                    .title(format!(" inspect  {} ", candidate.kind))
+                    .title(format!(" inspect  {}  ·  j/k scroll ", candidate.kind))
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
                     .border_style(Style::default().fg(theme.accent()))
@@ -1226,6 +1289,7 @@ fn candidate_lines(
             }),
             theme,
         ),
+        evidence_summary(candidate, theme),
         Line::from(""),
         section("RECOVERY", theme),
         Line::from(candidate.recovery.detail.clone()),
@@ -1272,6 +1336,34 @@ fn candidate_lines(
     }
 
     lines
+}
+
+fn evidence_summary(candidate: &ReportCandidate, theme: Theme) -> Line<'static> {
+    let proven = candidate
+        .evidence
+        .iter()
+        .filter(|evidence| evidence.status == "proven")
+        .count();
+    let refuted = candidate
+        .evidence
+        .iter()
+        .filter(|evidence| evidence.status == "refuted")
+        .count();
+    let unknown = candidate.evidence.len().saturating_sub(proven + refuted);
+    let color = if refuted > 0 {
+        theme.protected()
+    } else if unknown > 0 {
+        theme.review()
+    } else {
+        theme.safe()
+    };
+
+    field(
+        "evidence",
+        &format!("{proven} proven · {unknown} unknown · {refuted} refuted"),
+        Style::default().fg(color),
+        theme,
+    )
 }
 
 fn section(label: &str, theme: Theme) -> Line<'static> {

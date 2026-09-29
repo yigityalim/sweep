@@ -100,7 +100,12 @@ pub(crate) fn save_report(report: &Report, format: OutputFormat) -> io::Result<P
     Ok(output)
 }
 
-pub(crate) fn copy_text_report(report: &Report) -> io::Result<()> {
+pub(crate) fn copy_report(report: &Report, format: OutputFormat) -> io::Result<()> {
+    let rendered = render(report, format).map_err(io::Error::other)?;
+    copy_to_clipboard(&rendered)
+}
+
+pub(crate) fn copy_to_clipboard(value: &str) -> io::Result<()> {
     if env::consts::OS != "macos" {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -108,7 +113,6 @@ pub(crate) fn copy_text_report(report: &Report) -> io::Result<()> {
         ));
     }
 
-    let rendered = render(report, OutputFormat::Text).map_err(io::Error::other)?;
     let mut child = Command::new("/usr/bin/pbcopy")
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -119,7 +123,7 @@ pub(crate) fn copy_text_report(report: &Report) -> io::Result<()> {
         return Err(io::Error::other("could not open pbcopy stdin"));
     };
 
-    stdin.write_all(rendered.as_bytes())?;
+    stdin.write_all(value.as_bytes())?;
     drop(stdin);
 
     let status = child.wait()?;

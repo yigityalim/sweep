@@ -20,8 +20,8 @@ use tachyonfx::{EffectManager, Interpolation, Motion, fx};
 use crate::{
     display_path,
     preview::{
-        BrowseEntry, GrowthData, copy_text_report, history_directory, list_directory, load_growth,
-        reveal_in_finder, save_report,
+        BrowseEntry, GrowthData, copy_report, copy_to_clipboard, history_directory, list_directory,
+        load_growth, reveal_in_finder, save_report,
     },
     theme::Theme,
     ui,
@@ -130,14 +130,34 @@ pub(crate) enum Overlay {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CommandFamily {
+    Yank,
+    Save,
+}
+
+impl CommandFamily {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Yank => "YANK",
+            Self::Save => "SAVE",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PaletteAction {
     PreviewClean,
     RevealFinder,
     ChangeScope,
     UseBrowseAsScope,
+    SaveText,
     SaveMarkdown,
     SaveJson,
+    SaveToml,
     CopyText,
+    CopyMarkdown,
+    CopyJson,
+    CopyToml,
     OpenBrowse,
     OpenGrowth,
     OpenHistory,
@@ -145,14 +165,19 @@ pub(crate) enum PaletteAction {
 }
 
 impl PaletteAction {
-    pub(crate) const ALL: [Self; 11] = [
+    pub(crate) const ALL: [Self; 16] = [
         Self::PreviewClean,
         Self::RevealFinder,
         Self::ChangeScope,
         Self::UseBrowseAsScope,
+        Self::SaveText,
         Self::SaveMarkdown,
         Self::SaveJson,
+        Self::SaveToml,
         Self::CopyText,
+        Self::CopyMarkdown,
+        Self::CopyJson,
+        Self::CopyToml,
         Self::OpenBrowse,
         Self::OpenGrowth,
         Self::OpenHistory,
@@ -165,9 +190,14 @@ impl PaletteAction {
             Self::RevealFinder => "Reveal selected path in Finder",
             Self::ChangeScope => "Change scan scope…",
             Self::UseBrowseAsScope => "Use browsed directory as scan scope",
+            Self::SaveText => "Save text report",
             Self::SaveMarkdown => "Save Markdown report",
             Self::SaveJson => "Save JSON report",
+            Self::SaveToml => "Save TOML report",
             Self::CopyText => "Copy text report",
+            Self::CopyMarkdown => "Copy Markdown report",
+            Self::CopyJson => "Copy JSON report",
+            Self::CopyToml => "Copy TOML report",
             Self::OpenBrowse => "Open file browser",
             Self::OpenGrowth => "Open snapshot growth",
             Self::OpenHistory => "Open cleanup history",
@@ -217,6 +247,9 @@ pub(crate) struct App {
     pub(crate) overlay: Option<Overlay>,
     pub(crate) drawer: Option<Drawer>,
     pub(crate) palette_index: usize,
+    pub(crate) palette_query: String,
+    pub(crate) inspect_scroll: u16,
+    pub(crate) pending_family: Option<CommandFamily>,
     pub(crate) selected_paths: BTreeSet<String>,
     pub(crate) status_message: Option<String>,
     pub(crate) scanning: bool,
@@ -267,6 +300,9 @@ impl App {
             overlay: None,
             drawer: None,
             palette_index: 0,
+            palette_query: String::new(),
+            inspect_scroll: 0,
+            pending_family: None,
             selected_paths: BTreeSet::new(),
             status_message: None,
             scanning: false,
@@ -402,6 +438,15 @@ impl App {
         self.growth.diff.as_ref()
     }
 
+    pub(crate) fn visible_palette_actions(&self) -> Vec<PaletteAction> {
+        let query = self.palette_query.trim().to_lowercase();
+        PaletteAction::ALL
+            .iter()
+            .copied()
+            .filter(|action| query.is_empty() || action.label().to_lowercase().contains(&query))
+            .collect()
+    }
+
     pub(crate) fn candidate_decision_for_path(&self, path: &Path) -> Option<&str> {
         let display = display_path(path);
         self.report
@@ -509,6 +554,10 @@ impl App {
             InputMode::Normal => {}
         }
 
+        if self.handle_command_family_key(key) {
+            return Ok(());
+        }
+
         if self.handle_drawer_key(key) {
             return Ok(());
         }
@@ -540,8 +589,11 @@ impl App {
             KeyCode::Char('?') => self.overlay = Some(Overlay::Help),
             KeyCode::Char(':') => {
                 self.palette_index = 0;
+                self.palette_query.clear();
                 self.overlay = Some(Overlay::Palette);
             }
+            KeyCode::Char('y') => self.pending_family = Some(CommandFamily::Yank),
+            KeyCode::Char('s') => self.pending_family = Some(CommandFamily::Save),
             KeyCode::Char('1') => self.set_view(View::Candidates),
             KeyCode::Char('2') => self.set_view(View::Browse),
             KeyCode::Char('3') => self.set_view(View::Growth),
@@ -582,6 +634,7 @@ impl App {
         match key.code {
             KeyCode::Char('e') | KeyCode::Enter => {
                 if self.selected_candidate().is_some() {
+                    self.inspect_scroll = 0;
                     self.overlay = Some(Overlay::Inspect);
                 }
             }
@@ -692,6 +745,53 @@ impl App {
         Ok(())
     }
 
+    fn handle_command_family_key(&mut self, key: KeyEvent) -> bool {
+        let Some(family) = self.pending_family else {
+            return false;
+        };
+
+        self.pending_family = None;
+
+        match key.code {
+            KeyCode::Esc => {}
+            KeyCode::Char('y') if family == CommandFamily::Yank => {
+                self.copy_current_report(OutputFormat::Text);
+            }
+            KeyCode::Char('p') if family == CommandFamily::Yank => {
+                self.copy_selected_path();
+            }
+            KeyCode::Char('m') if family == CommandFamily::Yank => {
+                self.copy_current_report(OutputFormat::Markdown);
+            }
+            KeyCode::Char('j') if family == CommandFamily::Yank => {
+                self.copy_current_report(OutputFormat::Json);
+            }
+            KeyCode::Char('t') if family == CommandFamily::Yank => {
+                self.copy_current_report(OutputFormat::Toml);
+            }
+            KeyCode::Char('y') if family == CommandFamily::Save => {
+                self.save_current_report(OutputFormat::Text);
+            }
+            KeyCode::Char('m') if family == CommandFamily::Save => {
+                self.save_current_report(OutputFormat::Markdown);
+            }
+            KeyCode::Char('j') if family == CommandFamily::Save => {
+                self.save_current_report(OutputFormat::Json);
+            }
+            KeyCode::Char('t') if family == CommandFamily::Save => {
+                self.save_current_report(OutputFormat::Toml);
+            }
+            _ => {
+                self.status_message = Some(format!(
+                    "Unknown {} command. Press ? for the keymap.",
+                    family.label().to_lowercase()
+                ));
+            }
+        }
+
+        true
+    }
+
     fn handle_drawer_key(&mut self, key: KeyEvent) -> bool {
         let Some(drawer) = self.drawer.clone() else {
             return false;
@@ -722,26 +822,62 @@ impl App {
         };
 
         match overlay {
-            Overlay::Palette => match key.code {
-                KeyCode::Esc => self.overlay = None,
-                KeyCode::Char('j') | KeyCode::Down => {
-                    self.palette_index = (self.palette_index + 1).min(PaletteAction::ALL.len() - 1);
+            Overlay::Palette => {
+                let visible = self.visible_palette_actions();
+                match key.code {
+                    KeyCode::Esc => self.overlay = None,
+                    KeyCode::Down => {
+                        if !visible.is_empty() {
+                            self.palette_index = (self.palette_index + 1).min(visible.len() - 1);
+                        }
+                    }
+                    KeyCode::Up => {
+                        self.palette_index = self.palette_index.saturating_sub(1);
+                    }
+                    KeyCode::Home => self.palette_index = 0,
+                    KeyCode::End => {
+                        self.palette_index = visible.len().saturating_sub(1);
+                    }
+                    KeyCode::Backspace => {
+                        self.palette_query.pop();
+                        self.palette_index = 0;
+                    }
+                    KeyCode::Enter => {
+                        if let Some(action) = visible.get(self.palette_index).copied() {
+                            self.overlay = None;
+                            self.execute_palette_action(action)?;
+                        }
+                    }
+                    KeyCode::Char(character)
+                        if !key
+                            .modifiers
+                            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                    {
+                        self.palette_query.push(character);
+                        self.palette_index = 0;
+                    }
+                    _ => {}
                 }
-                KeyCode::Char('k') | KeyCode::Up => {
-                    self.palette_index = self.palette_index.saturating_sub(1);
-                }
-                KeyCode::Home => self.palette_index = 0,
-                KeyCode::End => self.palette_index = PaletteAction::ALL.len() - 1,
-                KeyCode::Enter => {
-                    let action = PaletteAction::ALL[self.palette_index];
-                    self.overlay = None;
-                    self.execute_palette_action(action)?;
-                }
+            }
+            Overlay::Help => match key.code {
+                KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?') => self.overlay = None,
                 _ => {}
             },
-            Overlay::Help | Overlay::Inspect => match key.code {
+            Overlay::Inspect => match key.code {
                 KeyCode::Esc | KeyCode::Enter => self.overlay = None,
-                KeyCode::Char('?') if overlay == Overlay::Help => self.overlay = None,
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.inspect_scroll = self.inspect_scroll.saturating_add(1);
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.inspect_scroll = self.inspect_scroll.saturating_sub(1);
+                }
+                KeyCode::PageDown => {
+                    self.inspect_scroll = self.inspect_scroll.saturating_add(8);
+                }
+                KeyCode::PageUp => {
+                    self.inspect_scroll = self.inspect_scroll.saturating_sub(8);
+                }
+                KeyCode::Home => self.inspect_scroll = 0,
                 _ => {}
             },
             Overlay::PathInput => {}
@@ -770,9 +906,14 @@ impl App {
                         Some(String::from("Open Browse first to choose a directory."));
                 }
             }
+            PaletteAction::SaveText => self.save_current_report(OutputFormat::Text),
             PaletteAction::SaveMarkdown => self.save_current_report(OutputFormat::Markdown),
             PaletteAction::SaveJson => self.save_current_report(OutputFormat::Json),
-            PaletteAction::CopyText => self.copy_current_report(),
+            PaletteAction::SaveToml => self.save_current_report(OutputFormat::Toml),
+            PaletteAction::CopyText => self.copy_current_report(OutputFormat::Text),
+            PaletteAction::CopyMarkdown => self.copy_current_report(OutputFormat::Markdown),
+            PaletteAction::CopyJson => self.copy_current_report(OutputFormat::Json),
+            PaletteAction::CopyToml => self.copy_current_report(OutputFormat::Toml),
             PaletteAction::OpenBrowse => self.set_view(View::Browse),
             PaletteAction::OpenGrowth => self.set_view(View::Growth),
             PaletteAction::OpenHistory => self.set_view(View::History),
@@ -787,6 +928,8 @@ impl App {
         self.input_mode = InputMode::Normal;
         self.overlay = None;
         self.drawer = None;
+        self.pending_family = None;
+        self.inspect_scroll = 0;
 
         match view {
             View::Candidates => self.clamp_candidate_selection(),
@@ -907,15 +1050,44 @@ impl App {
         }
     }
 
-    fn copy_current_report(&mut self) {
+    fn copy_current_report(&mut self, format: OutputFormat) {
         let Some(report) = self.report.as_ref() else {
             self.status_message = Some(String::from("A completed scan is required first."));
             return;
         };
 
-        match copy_text_report(report) {
+        match copy_report(report, format) {
             Ok(()) => {
-                self.status_message = Some(String::from("Copied text report to clipboard."));
+                self.status_message =
+                    Some(format!("Copied {} report to clipboard.", format.as_str()));
+            }
+            Err(error) => {
+                self.status_message = Some(format!("Clipboard copy failed: {error}"));
+            }
+        }
+    }
+
+    fn copy_selected_path(&mut self) {
+        let path = match self.view {
+            View::Candidates => self
+                .selected_candidate()
+                .and_then(|candidate| self.expand_report_path(&candidate.path)),
+            View::Browse => self
+                .selected_browse_entry()
+                .map(|entry| entry.path.clone())
+                .or_else(|| Some(self.browse_path.clone())),
+            View::Growth | View::History => Some(self.root.clone()),
+        };
+
+        let Some(path) = path else {
+            self.status_message = Some(String::from("No path selected."));
+            return;
+        };
+
+        let value = path.to_string_lossy().into_owned();
+        match copy_to_clipboard(&value) {
+            Ok(()) => {
+                self.status_message = Some(format!("Copied path: {}", display_path(&path)));
             }
             Err(error) => {
                 self.status_message = Some(format!("Clipboard copy failed: {error}"));

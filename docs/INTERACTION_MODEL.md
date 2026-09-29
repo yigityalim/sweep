@@ -161,7 +161,24 @@ Candidate selection uses `space`. `c` opens a side-panel cleanup preview. Only c
 
 Browse is bounded to the current scan scope. It supports parent/child navigation without following symlink directories. `o` reveals the selected path in Finder through `/usr/bin/open -R`.
 
-The action palette (`:`) exposes scope changes, report export, clipboard copy, Finder reveal, view navigation, rescan, and clean preview. Report export uses the canonical report model.
+The action palette (`:`) exposes scope changes, report export, clipboard copy, Finder reveal, view navigation, rescan, and clean preview. It is searchable by typing and uses arrow keys for selection. Report export uses the canonical report model.
+
+The documented copy/save families are active in the TUI:
+
+```text
+y y            copy text report
+y p            copy selected path
+y m            copy Markdown report
+y j            copy JSON report
+y t            copy TOML report
+
+s y            save text report
+s m            save Markdown report
+s j            save JSON report
+s t            save TOML report
+```
+
+The inspect overlay is scrollable with `j/k`, arrow keys, and page up/down. Its evidence summary reports proven/unknown/refuted counts without reinterpreting classification.
 
 Growth reads the latest two valid snapshots for the exact current scope and renders a descriptive diff. Invalid snapshots are ignored with an explicit count. History is an empty preview surface until a mutation engine can produce measured cleanup receipts.
 
