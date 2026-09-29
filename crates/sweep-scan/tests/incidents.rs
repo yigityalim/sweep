@@ -138,6 +138,7 @@ fn workspace_node_modules_inherits_repository_lockfile() {
         "lockfileVersion: '9.0'\n",
     )
     .unwrap();
+    fs::write(repo.path().join(".gitignore"), "**/node_modules\n").unwrap();
 
     let package = repo.path().join("packages/ui");
     fs::create_dir_all(package.join("node_modules/pkg")).unwrap();
