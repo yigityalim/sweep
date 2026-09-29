@@ -159,7 +159,10 @@ impl fmt::Display for SnapshotError {
                 write!(formatter, "unsupported snapshot schema version {version}")
             }
             Self::InvalidRelativePath(path) => {
-                write!(formatter, "snapshot contains an invalid relative path: {path:?}")
+                write!(
+                    formatter,
+                    "snapshot contains an invalid relative path: {path:?}"
+                )
             }
             Self::DuplicateCandidate(key) => {
                 write!(
@@ -985,7 +988,9 @@ mod tests {
 
         assert_eq!(
             snapshot.validate(),
-            Err(SnapshotError::InvalidRelativePath(String::from("../outside")))
+            Err(SnapshotError::InvalidRelativePath(String::from(
+                "../outside"
+            )))
         );
     }
 
