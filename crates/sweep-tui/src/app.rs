@@ -828,8 +828,7 @@ impl App {
                     KeyCode::Esc => self.overlay = None,
                     KeyCode::Down => {
                         if !visible.is_empty() {
-                            self.palette_index =
-                                (self.palette_index + 1).min(visible.len() - 1);
+                            self.palette_index = (self.palette_index + 1).min(visible.len() - 1);
                         }
                     }
                     KeyCode::Up => {
@@ -1059,10 +1058,8 @@ impl App {
 
         match copy_report(report, format) {
             Ok(()) => {
-                self.status_message = Some(format!(
-                    "Copied {} report to clipboard.",
-                    format.as_str()
-                ));
+                self.status_message =
+                    Some(format!("Copied {} report to clipboard.", format.as_str()));
             }
             Err(error) => {
                 self.status_message = Some(format!("Clipboard copy failed: {error}"));
@@ -1090,8 +1087,7 @@ impl App {
         let value = path.to_string_lossy().into_owned();
         match copy_to_clipboard(&value) {
             Ok(()) => {
-                self.status_message =
-                    Some(format!("Copied path: {}", display_path(&path)));
+                self.status_message = Some(format!("Copied path: {}", display_path(&path)));
             }
             Err(error) => {
                 self.status_message = Some(format!("Clipboard copy failed: {error}"));
