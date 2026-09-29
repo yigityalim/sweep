@@ -189,6 +189,7 @@ fn membership_from_patterns(
 ) -> WorkspaceMembership {
     let mut included_pattern = None;
     let mut excluded = false;
+    let mut unsupported_pattern = false;
 
     for pattern in patterns {
         let (negative, value) = pattern
@@ -196,6 +197,7 @@ fn membership_from_patterns(
             .map_or((false, pattern.as_str()), |value| (true, value));
 
         let Some(matches) = simple_workspace_pattern_matches(value, relative) else {
+            unsupported_pattern = true;
             continue;
         };
         if !matches {
@@ -207,6 +209,12 @@ fn membership_from_patterns(
         } else if included_pattern.is_none() {
             included_pattern = Some(pattern.clone());
         }
+    }
+
+    if unsupported_pattern {
+        return WorkspaceMembership::Unknown(format!(
+            "{source} contains a workspace pattern outside Sweep's conservative matcher; workspace membership is not proven."
+        ));
     }
 
     if excluded {
@@ -711,6 +719,14 @@ mod tests {
             simple_workspace_pattern_matches("packages/{a,b}", "packages/a"),
             None
         );
+
+        let membership = membership_from_patterns(
+            "packages/a",
+            vec![String::from("packages/*"), String::from("packages/{a,b}")],
+            "package.json workspaces",
+            "package-manager workspace",
+        );
+        assert!(matches!(membership, WorkspaceMembership::Unknown(_)));
     }
 
     #[test]
