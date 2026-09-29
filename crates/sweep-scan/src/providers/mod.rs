@@ -6,7 +6,9 @@ use std::{
 use sweep_core::{CandidateKind, Decision, Evidence, RecoveryContract};
 
 mod cargo;
+mod go;
 mod node;
+mod python;
 mod swift;
 mod xcode;
 mod zig;
@@ -78,11 +80,13 @@ pub(crate) trait Provider: Sync {
 
 static NODE: node::NodeProvider = node::NodeProvider;
 static CARGO: cargo::CargoProvider = cargo::CargoProvider;
+static GO: go::GoProvider = go::GoProvider;
+static PYTHON: python::PythonProvider = python::PythonProvider;
 static ZIG: zig::ZigProvider = zig::ZigProvider;
 static SWIFT: swift::SwiftProvider = swift::SwiftProvider;
 static XCODE: xcode::XcodeProvider = xcode::XcodeProvider;
 
-static PROVIDERS: [&dyn Provider; 5] = [&NODE, &CARGO, &ZIG, &SWIFT, &XCODE];
+static PROVIDERS: [&dyn Provider; 7] = [&NODE, &CARGO, &ZIG, &SWIFT, &PYTHON, &GO, &XCODE];
 
 pub(crate) fn assess(path: &Path) -> Option<ProviderAssessment> {
     let context = ProviderContext::from_environment();

@@ -255,6 +255,12 @@ fn kind_name(candidate: &Candidate) -> &'static str {
         CandidateKind::ZigOutput => "zig-out",
         CandidateKind::SwiftBuild => "swift-build",
         CandidateKind::XcodeDerivedData => "xcode-derived",
+        CandidateKind::GoBuildCache => "go-build-cache",
+        CandidateKind::GoModuleCache => "go-mod-cache",
+        CandidateKind::PytestCache => "pytest-cache",
+        CandidateKind::MypyCache => "mypy-cache",
+        CandidateKind::RuffCache => "ruff-cache",
+        CandidateKind::PythonVirtualEnv => "python-venv",
         CandidateKind::Unrecognized => "unrecognized",
     }
 }

@@ -88,9 +88,17 @@ Cargo     Cargo.toml + target
 Zig       build.zig + .zig-cache/zig-out
 SwiftPM   Package.swift + .build
 Xcode     ~/Library/Developer/Xcode/DerivedData/<entry>
+Python    project marker + .pytest_cache/.mypy_cache/.ruff_cache/.venv
+Go        exact default macOS GOCACHE/GOPATH module-cache roots
 ```
 
 Project-scoped providers require Git ownership evidence before becoming safe. Xcode DerivedData declares Git evidence not applicable because its recovery boundary is the Xcode-managed DerivedData root rather than a source repository.
+
+Python tool caches require the standard cache-directory signature in addition to a recognized project boundary. A missing or unreadable signature lowers the candidate to review; an invalid signature protects it. `.venv` is recognized only with `pyvenv.cfg` and remains review-only because manually installed packages are not provably recoverable.
+
+The Go provider currently recognizes only the default macOS build cache and default GOPATH module cache. The build cache is tool-owned generated state and does not require Git ownership evidence. The module cache is review-only because it contains downloaded dependency source whose exact recovery can depend on network access, upstream availability, and private-module credentials.
+
+Future Go build-cache mutation must use the owner command (`go clean -cache`) rather than turning the recognized path into a generic recursive-delete capability.
 
 Provider-specific protection is part of the provider assessment. For example, the Cargo provider protects `target` when `target/deploy/*-keypair.json` exists and lowers the decision to review when that protected subtree cannot be inspected conclusively.
 

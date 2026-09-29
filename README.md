@@ -119,8 +119,14 @@ The initial rule set recognizes:
 - Zig `zig-out`;
 - Swift Package Manager `.build`;
 - Xcode DerivedData entries when explicitly scanned.
+- Go's default macOS build cache (`~/Library/Caches/go-build`);
+- Go's default module cache (`~/go/pkg/mod`) as review-only;
+- pytest `.pytest_cache`;
+- mypy `.mypy_cache`;
+- Ruff `.ruff_cache`;
+- Python `.venv` environments as review-only.
 
-The rule set is intentionally small. Broad names such as `build`, `dist`, and `cache` are not safe by default.
+The rule set is intentionally small. Python tool caches require a Python project boundary, a standard cache-directory tag, and Git ownership evidence before becoming safe. Virtual environments remain review-only because they may contain undeclared packages. Go module caches remain review-only because exact re-download depends on module availability and credentials. Broad names such as `build`, `dist`, and `cache` are not safe by default.
 
 ## Size semantics
 

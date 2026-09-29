@@ -15,6 +15,12 @@ pub enum CandidateKind {
     ZigOutput,
     SwiftBuild,
     XcodeDerivedData,
+    GoBuildCache,
+    GoModuleCache,
+    PytestCache,
+    MypyCache,
+    RuffCache,
+    PythonVirtualEnv,
     Unrecognized,
 }
 
