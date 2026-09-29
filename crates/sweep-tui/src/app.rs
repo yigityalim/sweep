@@ -830,26 +830,19 @@ impl App {
     }
 
     fn on_history_key(&mut self, key: KeyEvent) {
+        let len = self.preview_history.len();
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
-                move_table_selection(
-                    &mut self.history_state,
-                    self.preview_history.len(),
-                    1,
-                );
+                move_table_selection(&mut self.history_state, len, 1);
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                move_table_selection(
-                    &mut self.history_state,
-                    self.preview_history.len(),
-                    -1,
-                );
+                move_table_selection(&mut self.history_state, len, -1);
             }
             KeyCode::Home | KeyCode::Char('g') => {
-                select_first(&mut self.history_state, self.preview_history.len());
+                select_first(&mut self.history_state, len);
             }
             KeyCode::End | KeyCode::Char('G') => {
-                select_last(&mut self.history_state, self.preview_history.len());
+                select_last(&mut self.history_state, len);
             }
             _ => {}
         }
@@ -1331,23 +1324,11 @@ impl App {
     }
 
     fn record_preview_receipt(&mut self, plan: &CleanPlan) {
-        let paths = plan
-            .included
-            .iter()
-            .filter(|candidate| plan.is_enabled(candidate))
-            .map(|candidate| candidate.path.clone())
-            .collect();
-        let receipt = PreviewReceipt {
-            created_unix_seconds: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-            scope: self.root_label(),
-            safe_count: plan.enabled_count(),
-            excluded_count: plan.excluded.len(),
-            allocated_bytes_estimate: plan.allocated_bytes_estimate(),
-            paths,
-        };
+        let created_unix_seconds = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let receipt = preview_receipt_from_plan(self.root_label(), plan, created_unix_seconds);
 
         self.preview_history.push(receipt);
         self.history_state
@@ -1650,6 +1631,28 @@ impl App {
 
     fn clamp_history_selection(&mut self) {
         clamp_table_selection(&mut self.history_state, self.preview_history.len());
+    }
+}
+
+fn preview_receipt_from_plan(
+    scope: String,
+    plan: &CleanPlan,
+    created_unix_seconds: u64,
+) -> PreviewReceipt {
+    let paths = plan
+        .included
+        .iter()
+        .filter(|candidate| plan.is_enabled(candidate))
+        .map(|candidate| candidate.path.clone())
+        .collect();
+
+    PreviewReceipt {
+        created_unix_seconds,
+        scope,
+        safe_count: plan.enabled_count(),
+        excluded_count: plan.excluded.len(),
+        allocated_bytes_estimate: plan.allocated_bytes_estimate(),
+        paths,
     }
 }
 
@@ -2085,6 +2088,30 @@ mod tests {
         plan.enabled_paths.insert(first);
         assert_eq!(plan.enabled_count(), 2);
         assert_eq!(plan.allocated_bytes_estimate(), 30);
+    }
+
+    #[test]
+    fn preview_receipt_contains_only_enabled_safe_paths() {
+        let data = report(vec![
+            candidate("~/Developer/a/target", "safe", 10),
+            candidate("~/Developer/b/target", "safe", 20),
+            candidate("~/Developer/c/target", "review", 30),
+        ]);
+        let selected = data
+            .candidates
+            .iter()
+            .map(|candidate| candidate.path.clone())
+            .collect();
+        let mut plan = build_clean_plan(&data, &selected, None).unwrap();
+        plan.enabled_paths.remove("~/Developer/a/target");
+
+        let receipt = preview_receipt_from_plan(String::from("~/Developer"), &plan, 42);
+
+        assert_eq!(receipt.created_unix_seconds, 42);
+        assert_eq!(receipt.safe_count, 1);
+        assert_eq!(receipt.excluded_count, 1);
+        assert_eq!(receipt.allocated_bytes_estimate, 20);
+        assert_eq!(receipt.paths, vec![String::from("~/Developer/b/target")]);
     }
 
     #[test]
