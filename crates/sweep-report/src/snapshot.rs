@@ -387,13 +387,14 @@ fn diff_snapshots(before: &Snapshot, after: &Snapshot) -> SnapshotDiff {
     let mut moved = Vec::new();
 
     for (before_index, before_candidate) in before.candidates.iter().enumerate() {
+        let before_key = before_candidate.exact_key();
         let Some((after_index, after_candidate)) =
             after
                 .candidates
                 .iter()
                 .enumerate()
                 .find(|(index, candidate)| {
-                    !after_matched[*index] && candidate.exact_key() == before_candidate.exact_key()
+                    !after_matched[*index] && candidate.exact_key() == before_key
                 })
         else {
             continue;
@@ -431,7 +432,7 @@ fn diff_snapshots(before: &Snapshot, after: &Snapshot) -> SnapshotDiff {
             continue;
         };
 
-        let matching_after: Vec<_> = after
+        let mut matching_after = after
             .candidates
             .iter()
             .enumerate()
@@ -442,14 +443,14 @@ fn diff_snapshots(before: &Snapshot, after: &Snapshot) -> SnapshotDiff {
                     && before_candidate.subtree_metadata_fingerprint.is_some()
                     && candidate.subtree_metadata_fingerprint
                         == before_candidate.subtree_metadata_fingerprint
-            })
-            .collect();
+            });
 
-        if matching_after.len() != 1 {
+        let Some((after_index, after_candidate)) = matching_after.next() else {
+            continue;
+        };
+        if matching_after.next().is_some() {
             continue;
         }
-
-        let (after_index, after_candidate) = matching_after[0];
         before_matched[before_index] = true;
         after_matched[after_index] = true;
 
