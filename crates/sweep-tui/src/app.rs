@@ -630,6 +630,8 @@ impl App {
                 self.scan_elapsed = elapsed;
                 self.discovery_error_count = discovery_error_count;
                 self.selected_paths.clear();
+                self.selected_only = false;
+                self.cancel_range_selection();
                 self.clamp_candidate_selection();
 
                 if !self.no_color {
@@ -925,12 +927,48 @@ impl App {
         };
 
         match drawer {
-            Drawer::CleanPlan(plan) => match key.code {
+            Drawer::CleanPlan(mut plan) => match key.code {
                 KeyCode::Esc => self.drawer = None,
+                KeyCode::Char('j') | KeyCode::Down => {
+                    if !plan.included.is_empty() {
+                        plan.cursor = (plan.cursor + 1).min(plan.included.len() - 1);
+                    }
+                    self.drawer = Some(Drawer::CleanPlan(plan));
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    plan.cursor = plan.cursor.saturating_sub(1);
+                    self.drawer = Some(Drawer::CleanPlan(plan));
+                }
+                KeyCode::Char(' ') => {
+                    if let Some(candidate) = plan.included.get(plan.cursor) {
+                        if !plan.enabled_paths.insert(candidate.path.clone()) {
+                            plan.enabled_paths.remove(&candidate.path);
+                        }
+                    }
+                    self.drawer = Some(Drawer::CleanPlan(plan));
+                }
+                KeyCode::Char('a') => {
+                    plan.enabled_paths = plan
+                        .included
+                        .iter()
+                        .map(|candidate| candidate.path.clone())
+                        .collect();
+                    self.drawer = Some(Drawer::CleanPlan(plan));
+                }
+                KeyCode::Char('u') => {
+                    plan.enabled_paths.clear();
+                    self.drawer = Some(Drawer::CleanPlan(plan));
+                }
                 KeyCode::Enter => {
-                    self.drawer = Some(Drawer::PreviewReceipt(plan));
-                    self.status_message =
-                        Some(String::from("Preview complete. No files were changed."));
+                    if plan.enabled_count() == 0 {
+                        self.status_message =
+                            Some(String::from("Enable at least one safe candidate first."));
+                        self.drawer = Some(Drawer::CleanPlan(plan));
+                    } else {
+                        self.drawer = Some(Drawer::PreviewReceipt(plan));
+                        self.status_message =
+                            Some(String::from("Preview complete. No files were changed."));
+                    }
                 }
                 _ => {}
             },
@@ -1571,15 +1609,17 @@ fn build_clean_plan(
         }
     }
 
-    let allocated_bytes_estimate = included.iter().fold(0_u64, |total, candidate| {
-        total.saturating_add(candidate.allocated_bytes_estimate)
-    });
+    let enabled_paths = included
+        .iter()
+        .map(|candidate| candidate.path.clone())
+        .collect();
 
     Some(CleanPlan {
         requested_count,
         included,
         excluded,
-        allocated_bytes_estimate,
+        enabled_paths,
+        cursor: 0,
     })
 }
 
