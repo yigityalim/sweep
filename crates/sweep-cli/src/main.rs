@@ -474,10 +474,7 @@ fn run_plan(path: PathBuf, output: Option<PathBuf>) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-fn run_revalidate(
-    plan_path: PathBuf,
-    json: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn run_revalidate(plan_path: PathBuf, json: bool) -> Result<(), Box<dyn std::error::Error>> {
     let bytes = fs::read(&plan_path)?;
     let plan: Plan = serde_json::from_slice(&bytes)?;
     let result = revalidate_plan(&plan)?;
