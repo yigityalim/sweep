@@ -157,7 +157,9 @@ The current TUI includes read-only workflow previews before mutation exists:
 4  history
 ```
 
-Candidate selection uses `space`. `c` opens a side-panel cleanup preview. Only candidates already classified `safe` are eligible; review and protected candidates remain visible as excluded. Confirming the preview stops at a receipt-like boundary and explicitly reports that no files changed.
+Candidate selection uses `space`. `v` starts/stops range selection and extends with normal navigation. `a` marks all currently visible `safe` candidates, `u` clears marks, and `x` toggles a selected-only view. These controls change presentation state only.
+
+`c` opens a side-panel cleanup preview. Only candidates already classified `safe` are eligible; review and protected candidates remain visible as excluded. Inside the drawer, `j/k` moves through eligible items, `space` enables/disables an item, `a` enables all, and `u` disables all. Disabled safe items stay visible and are not counted in the preview estimate. Confirming the preview stops at a receipt-like boundary and explicitly reports that no files changed.
 
 Browse is bounded to the current scan scope. It supports parent/child navigation without following symlink directories. `o` reveals the selected path in Finder through `/usr/bin/open -R`.
 
