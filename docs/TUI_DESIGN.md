@@ -90,8 +90,10 @@ The interface has four stable zones:
 
 1. identity and live scan status;
 2. storage summary;
-3. candidate graph;
+3. active workspace;
 4. command bar.
+
+The active workspace now has four read-only modes: candidates, browse, growth, and history. Candidate cleanup opens as a right-side drawer on wide terminals so the evidence/plan transition stays spatially stable.
 
 This prevents view movement as scan state changes.
 
@@ -186,6 +188,20 @@ The TUI adds these UI-specific constraints:
 6. imported snapshots remain outside live cleanup authority;
 7. partial discovery must be visible;
 8. error states stay inside the terminal rather than silently falling back to destructive commands.
+
+## Preview operation surfaces
+
+The preview release deliberately exercises the future workflow without crossing the mutation boundary:
+
+- candidate marks are presentation state only;
+- clean preview includes only `safe` candidates and lists review/protected candidates as excluded;
+- confirming a clean preview renders a preview receipt and performs no filesystem mutation;
+- Browse never follows directory symlinks and never offers arbitrary delete;
+- Finder reveal is an external navigation action only;
+- scope changes discard old live authority and start a new scan;
+- Growth consumes validated read-only snapshots for the exact scope;
+- cleanup History remains empty until measured mutation receipts exist;
+- report save/copy routes through the canonical report serializer.
 
 ## Future layers
 

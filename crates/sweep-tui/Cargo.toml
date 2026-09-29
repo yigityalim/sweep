@@ -10,6 +10,7 @@ authors.workspace = true
 
 [dependencies]
 ratatui.workspace = true
+serde_json.workspace = true
 sweep-report.workspace = true
 sweep-scan.workspace = true
 tachyonfx.workspace = true

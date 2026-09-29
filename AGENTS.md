@@ -33,6 +33,9 @@ Do not broaden Sweep into a generic macOS cleaner, app uninstaller, system optim
 21. Snapshot completeness must preserve discovery and candidate-traversal uncertainty.
 22. Snapshot diff identity may describe historical continuity but never proves current filesystem identity.
 23. Imported snapshots and diffs cannot be converted directly into mutation plans.
+24. TUI cleanup previews are descriptive only and must not call mutation code or write cleanup-history receipts.
+25. TUI Browse is read-only; it must never expose arbitrary filesystem deletion.
+26. Finder reveal, report export, clipboard, navigation, and action-palette commands never alter classification or deletion authority.
 
 ## Rust rules
 
