@@ -1359,12 +1359,12 @@ impl App {
         };
 
         let indices = self.visible_indices();
-        let anchor = indices.iter().position(|index| {
-            report.candidates[*index].path == range.anchor_path
-        });
-        let current = indices.iter().position(|index| {
-            report.candidates[*index].path == current_path
-        });
+        let anchor = indices
+            .iter()
+            .position(|index| report.candidates[*index].path == range.anchor_path);
+        let current = indices
+            .iter()
+            .position(|index| report.candidates[*index].path == current_path);
         let (Some(anchor), Some(current)) = (anchor, current) else {
             self.cancel_range_selection();
             return;
@@ -1396,7 +1396,10 @@ impl App {
         for path in &paths {
             self.selected_paths.insert(path.clone());
         }
-        self.status_message = Some(format!("Selected {} visible safe candidate(s).", paths.len()));
+        self.status_message = Some(format!(
+            "Selected {} visible safe candidate(s).",
+            paths.len()
+        ));
     }
 
     fn clear_candidate_selection(&mut self) {
@@ -1419,7 +1422,10 @@ impl App {
         self.selected_only = !self.selected_only;
         self.clamp_candidate_selection();
         self.status_message = Some(if self.selected_only {
-            format!("Showing {} selected candidate(s).", self.selected_paths.len())
+            format!(
+                "Showing {} selected candidate(s).",
+                self.selected_paths.len()
+            )
         } else {
             String::from("Selected-only view disabled.")
         });
