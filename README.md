@@ -122,7 +122,7 @@ A snapshot records candidate sizes, decisions, fingerprints, lightweight filesys
 
 `diff` compares two snapshots of the same root and reports growth, shrinkage, additions, removals, moves, and decision changes. Exact path+kind matches take precedence; unmatched candidates may be recognized as moves only when a unique filesystem `(device, inode)` identity matches.
 
-Snapshots are historical observations only. They cannot authorize cleanup, and an incomplete snapshot remains explicitly marked incomplete.
+Snapshots are historical observations only. They cannot authorize cleanup, and an incomplete snapshot remains explicitly marked incomplete. New snapshots use schema v2, keep candidate paths relative to the selected root, remain backward-readable with v1 files, and avoid overwriting same-second default snapshot names.
 
 ### Plan
 
