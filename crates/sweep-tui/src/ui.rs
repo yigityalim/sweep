@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ratatui::{
     Frame,
@@ -718,50 +718,190 @@ fn render_growth(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
     frame.render_widget(table, chunks[1]);
 }
 
-fn render_history(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
-    let inner = centered(area, 72, 13);
-    let lines = vec![
-        Line::from(""),
-        Line::from(Span::styled(
-            "No cleanup receipts yet",
-            Style::default()
-                .fg(theme.bright_text())
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Sweep is still in preview mode.",
+fn render_history(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
+    if app.preview_history.is_empty() {
+        let inner = centered(area, 72, 13);
+        let lines = vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "No session previews yet",
+                Style::default()
+                    .fg(theme.bright_text())
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Confirm a clean preview to see its volatile receipt here.",
+                Style::default().fg(theme.muted()),
+            )),
+            Line::from(Span::styled(
+                "Session previews are never written as cleanup history.",
+                Style::default().fg(theme.muted()),
+            )),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("future receipt store  ", Style::default().fg(theme.muted())),
+                Span::styled(app.history_path_label(), Style::default().fg(theme.text())),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Persistent receipts remain reserved for measured real mutations.",
+                Style::default().fg(theme.accent()),
+            )),
+        ];
+
+        frame.render_widget(
+            Paragraph::new(lines)
+                .alignment(Alignment::Center)
+                .wrap(Wrap { trim: false })
+                .block(
+                    Block::default()
+                        .title(" preview history ")
+                        .borders(Borders::ALL)
+                        .border_type(BorderType::Rounded)
+                        .border_style(Style::default().fg(theme.border()))
+                        .style(theme.panel()),
+                ),
+            inner,
+        );
+        return;
+    }
+
+    let body = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
+        .split(area);
+
+    let rows: Vec<_> = app
+        .preview_history
+        .iter()
+        .enumerate()
+        .map(|(index, receipt)| {
+            Row::new(vec![
+                Cell::from(format!("#{}", index + 1)),
+                Cell::from(format_age(receipt.created_unix_seconds)),
+                Cell::from(receipt.safe_count.to_string()),
+                Cell::from(format_bytes(receipt.allocated_bytes_estimate)),
+                Cell::from(receipt.scope.clone()),
+            ])
+            .style(Style::default().fg(theme.text()).bg(theme.background()))
+        })
+        .collect();
+
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(6),
+            Constraint::Length(10),
+            Constraint::Length(8),
+            Constraint::Length(12),
+            Constraint::Min(20),
+        ],
+    )
+    .header(
+        Row::new(["RUN", "WHEN", "SAFE", "ESTIMATE", "SCOPE"])
+            .style(
+                Style::default()
+                    .fg(theme.muted())
+                    .bg(theme.surface())
+                    .add_modifier(Modifier::BOLD),
+            )
+            .bottom_margin(1),
+    )
+    .column_spacing(1)
+    .row_highlight_style(theme.selected())
+    .highlight_symbol(if app.ascii { "> " } else { "▌ " })
+    .block(
+        Block::default()
+            .title(format!(" session previews  {} ", app.preview_history.len()))
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.border())),
+    );
+
+    frame.render_stateful_widget(table, body[0], &mut app.history_state);
+
+    let detail = if let Some(receipt) = app.selected_preview_receipt() {
+        let mut lines = vec![
+            section("PREVIEW RECEIPT", theme),
+            Line::from(Span::styled(
+                "NO FILES CHANGED",
+                Style::default()
+                    .fg(theme.safe())
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            field(
+                "when",
+                &format_age(receipt.created_unix_seconds),
+                Style::default().fg(theme.text()),
+                theme,
+            ),
+            field(
+                "scope",
+                &receipt.scope,
+                Style::default().fg(theme.text()),
+                theme,
+            ),
+            field(
+                "safe items",
+                &receipt.safe_count.to_string(),
+                Style::default().fg(theme.safe()),
+                theme,
+            ),
+            field(
+                "excluded",
+                &receipt.excluded_count.to_string(),
+                Style::default().fg(theme.review()),
+                theme,
+            ),
+            field(
+                "would target",
+                &format!("{} estimate", format_bytes(receipt.allocated_bytes_estimate)),
+                Style::default().fg(theme.bright_text()),
+                theme,
+            ),
+            Line::from(""),
+            section("PATHS", theme),
+        ];
+
+        for path in receipt.paths.iter().take(9) {
+            lines.push(Line::from(Span::styled(
+                compact(path, 40),
+                Style::default().fg(theme.muted()),
+            )));
+        }
+        if receipt.paths.len() > 9 {
+            lines.push(Line::from(Span::styled(
+                format!("… {} more", receipt.paths.len() - 9),
+                Style::default().fg(theme.muted()),
+            )));
+        }
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Volatile session data only. Not persisted.",
+            Style::default().fg(theme.review()),
+        )));
+        lines
+    } else {
+        vec![Line::from(Span::styled(
+            "No preview selected.",
             Style::default().fg(theme.muted()),
-        )),
-        Line::from(Span::styled(
-            "Preview clean plans never mutate files and never write cleanup history.",
-            Style::default().fg(theme.muted()),
-        )),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("future receipt store  ", Style::default().fg(theme.muted())),
-            Span::styled(app.history_path_label(), Style::default().fg(theme.text())),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Once mutation exists, receipts will record plan, revalidation, result and measured reclaim.",
-            Style::default().fg(theme.accent()),
-        )),
-    ];
+        ))]
+    };
 
     frame.render_widget(
-        Paragraph::new(lines)
-            .alignment(Alignment::Center)
+        Paragraph::new(detail)
             .wrap(Wrap { trim: false })
             .block(
                 Block::default()
-                    .title(" cleanup history ")
+                    .title(" detail ")
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
                     .border_style(Style::default().fg(theme.border()))
                     .style(theme.panel()),
             ),
-        inner,
+        body[1],
     );
 }
 
@@ -1084,7 +1224,9 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
             View::Growth => {
                 spans.extend(key("R", "reload snapshots", theme));
             }
-            View::History => {}
+            View::History => {
+                spans.extend(key("j/k", "preview receipts", theme));
+            }
         }
         spans.extend(key("y/s", "copy/save", theme));
         spans.extend(key("1-4", "views", theme));
@@ -1634,6 +1776,24 @@ fn format_delta(direction: DeltaDirection, bytes: u64) -> String {
         DeltaDirection::Increased => format!("+{}", format_bytes(bytes)),
         DeltaDirection::Decreased => format!("-{}", format_bytes(bytes)),
         DeltaDirection::Unchanged => String::from("0 B"),
+    }
+}
+
+fn format_age(created_unix_seconds: u64) -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let age = now.saturating_sub(created_unix_seconds);
+
+    if age < 60 {
+        format!("{age}s ago")
+    } else if age < 3_600 {
+        format!("{}m ago", age / 60)
+    } else if age < 86_400 {
+        format!("{}h ago", age / 3_600)
+    } else {
+        format!("{}d ago", age / 86_400)
     }
 }
 
