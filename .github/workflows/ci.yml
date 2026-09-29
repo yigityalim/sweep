@@ -44,13 +44,6 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Print generated lockfile
-        if: matrix.os == 'macos-26'
-        run: |
-          echo SWEEP_CARGO_LOCK_BEGIN
-          base64 < Cargo.lock
-          echo SWEEP_CARGO_LOCK_END
-
       - name: Test
         run: cargo test --workspace --all-features --locked
 
