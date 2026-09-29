@@ -11,7 +11,8 @@ sw explain ~/Developer/project/target
 sw report ~/Developer --format markdown
 sw snapshot ~/Developer
 sw diff before.sweep.json after.sweep.json
-sw plan ~/Developer
+sw plan ~/Developer --output sweep-plan.json
+sw revalidate sweep-plan.json
 sw doctor
 ```
 
@@ -32,7 +33,8 @@ The current repository implements the non-destructive foundation:
 - no-follow symlink traversal;
 - Git ownership evidence;
 - protected-artifact detection;
-- immutable plan generation;
+- immutable plan generation and structural validation;
+- exact read-only plan revalidation against filesystem identity and subtree fingerprints;
 - versioned text, Markdown, JSON, and TOML reports;
 - macOS clipboard and Downloads export;
 - machine-readable JSON;
@@ -132,6 +134,17 @@ sw plan ~/Developer --output sweep-plan.json
 ```
 
 `plan` serializes only candidates currently classified as safe. The plan records each path's filesystem identity so a future apply phase can refuse changed candidates instead of deleting a different object at the same path.
+
+Generated plans are validated before they are written. A valid plan must contain only safe candidates under its declared absolute root, and every candidate must retain complete traversal evidence, a filesystem identity, a subtree fingerprint, and a recovery contract.
+
+### Revalidate
+
+```console
+sw revalidate sweep-plan.json
+sw revalidate sweep-plan.json --json
+```
+
+`revalidate` never discovers new targets and never mutates files. It checks exactly the candidates already present in the plan, verifies physical parent containment, rejects symlink replacement, rebinds filesystem identity, and recomputes the subtree metadata fingerprint. Each candidate is reported as `unchanged`, `changed`, `missing`, or `unverifiable`.
 
 The current version cannot apply plans.
 
@@ -234,7 +247,7 @@ candidate classification
 immutable plan
     |
     v
-[future] identity revalidation
+identity + subtree revalidation
     |
     v
 [future] mutation boundary
