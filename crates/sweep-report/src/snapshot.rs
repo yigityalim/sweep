@@ -156,10 +156,16 @@ impl fmt::Display for SnapshotError {
                 write!(formatter, "unsupported snapshot schema version {version}")
             }
             Self::DuplicateCandidate(key) => {
-                write!(formatter, "snapshot contains a duplicate candidate key: {key:?}")
+                write!(
+                    formatter,
+                    "snapshot contains a duplicate candidate key: {key:?}"
+                )
             }
             Self::SummaryMismatch => {
-                write!(formatter, "snapshot summary does not match its candidate set")
+                write!(
+                    formatter,
+                    "snapshot summary does not match its candidate set"
+                )
             }
             Self::InvalidCompleteness => {
                 write!(
