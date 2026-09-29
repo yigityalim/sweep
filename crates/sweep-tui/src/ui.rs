@@ -452,10 +452,7 @@ fn key(key: &str, label: &str, theme: Theme) -> [Span<'static>; 2] {
                 .fg(theme.accent())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(
-            format!(" {label}  "),
-            Style::default().fg(theme.muted()),
-        ),
+        Span::styled(format!(" {label}  "), Style::default().fg(theme.muted())),
     ]
 }
 
