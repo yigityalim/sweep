@@ -229,7 +229,7 @@ pub(crate) enum Drawer {
 enum ScanMessage {
     Finished {
         report: Report,
-        snapshot: Snapshot,
+        snapshot: Box<Snapshot>,
         elapsed: Duration,
         discovery_error_count: usize,
     },
@@ -522,7 +522,7 @@ impl App {
 
                         ScanMessage::Finished {
                             report,
-                            snapshot,
+                            snapshot: Box::new(snapshot),
                             elapsed: started.elapsed(),
                             discovery_error_count: scan.discovery_error_count,
                         }
@@ -577,7 +577,7 @@ impl App {
                             message: format!("Could not compare live growth: {error}"),
                         }
                     });
-                self.live_snapshot = Some(snapshot);
+                self.live_snapshot = Some(*snapshot);
                 self.report = Some(report);
                 self.last_scan_elapsed = Some(elapsed);
                 self.scan_elapsed = elapsed;
