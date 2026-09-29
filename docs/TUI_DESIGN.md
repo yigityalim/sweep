@@ -200,6 +200,8 @@ The preview release deliberately exercises the future workflow without crossing 
 - Finder reveal is an external navigation action only;
 - scope changes discard old live authority and start a new scan;
 - Growth consumes validated read-only snapshots for the exact scope;
+- after a live scan, the latest persisted snapshot becomes a read-only baseline for per-candidate live deltas;
+- the candidate table and inspector may display those deltas, but growth never changes cleanup eligibility;
 - cleanup History remains empty until measured mutation receipts exist;
 - report save/copy routes through the canonical report serializer;
 - copy/save key families expose text, Markdown, JSON, and TOML without duplicating serializers;
