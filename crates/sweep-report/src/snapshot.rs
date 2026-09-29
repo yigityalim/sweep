@@ -2,7 +2,7 @@ use std::{
     collections::BTreeSet,
     error::Error,
     fmt::{self, Write as _},
-    path::Path,
+    path::{Component, Path},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -145,6 +145,7 @@ pub enum SnapshotDiffFormat {
 #[derive(Debug, Eq, PartialEq)]
 pub enum SnapshotError {
     UnsupportedSchemaVersion(u32),
+    InvalidRelativePath(String),
     DuplicateCandidate(String),
     SummaryMismatch,
     InvalidCompleteness,
@@ -156,6 +157,9 @@ impl fmt::Display for SnapshotError {
         match self {
             Self::UnsupportedSchemaVersion(version) => {
                 write!(formatter, "unsupported snapshot schema version {version}")
+            }
+            Self::InvalidRelativePath(path) => {
+                write!(formatter, "snapshot contains an invalid relative path: {path:?}")
             }
             Self::DuplicateCandidate(key) => {
                 write!(
@@ -232,6 +236,7 @@ impl Snapshot {
 
         let mut keys = BTreeSet::new();
         for candidate in &self.candidates {
+            validate_relative_path(&candidate.relative_path)?;
             let key = candidate.exact_key();
             if !keys.insert(key.clone()) {
                 return Err(SnapshotError::DuplicateCandidate(key));
@@ -351,6 +356,24 @@ impl SnapshotCandidate {
             || self.traversal_complete != other.traversal_complete
             || self.subtree_metadata_fingerprint != other.subtree_metadata_fingerprint
             || self.recovery_kind != other.recovery_kind
+    }
+}
+
+fn validate_relative_path(value: &str) -> Result<(), SnapshotError> {
+    if value.is_empty() {
+        return Err(SnapshotError::InvalidRelativePath(value.to_owned()));
+    }
+
+    let path = Path::new(value);
+    let valid = !path.is_absolute()
+        && path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_) | Component::CurDir));
+
+    if valid {
+        Ok(())
+    } else {
+        Err(SnapshotError::InvalidRelativePath(value.to_owned()))
     }
 }
 
@@ -929,6 +952,30 @@ mod tests {
         assert_eq!(snapshot.candidates.len(), 1);
         assert_eq!(snapshot.candidates[0].relative_path, "a");
         assert!(!snapshot.complete);
+    }
+
+    #[test]
+    fn imported_snapshot_rejects_absolute_relative_path() {
+        let mut snapshot = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
+        snapshot.candidates[0].relative_path = String::from("/workspace/a");
+
+        assert_eq!(
+            snapshot.validate(),
+            Err(SnapshotError::InvalidRelativePath(String::from(
+                "/workspace/a"
+            )))
+        );
+    }
+
+    #[test]
+    fn imported_snapshot_rejects_parent_traversal() {
+        let mut snapshot = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
+        snapshot.candidates[0].relative_path = String::from("../outside");
+
+        assert_eq!(
+            snapshot.validate(),
+            Err(SnapshotError::InvalidRelativePath(String::from("../outside")))
+        );
     }
 
     #[test]
