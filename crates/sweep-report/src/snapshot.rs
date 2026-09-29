@@ -9,7 +9,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sweep_core::{Candidate, CandidateKind, Decision, RecoveryKind};
 
-pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
+pub const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
+const MIN_SUPPORTED_SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Snapshot {
@@ -36,7 +37,8 @@ pub struct SnapshotSummary {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SnapshotCandidate {
     pub relative_path: String,
-    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
     pub kind: CandidateKind,
     pub decision: Decision,
     pub logical_bytes: u64,
@@ -197,12 +199,14 @@ impl Snapshot {
             .unwrap_or_default()
             .as_secs();
 
+        let source_candidate_count = candidates.len();
         let candidates: Vec<_> = candidates
             .iter()
-            .map(|candidate| SnapshotCandidate::from_candidate(root, candidate))
+            .filter_map(|candidate| SnapshotCandidate::from_candidate(root, candidate))
             .collect();
 
         let complete = discovery_complete
+            && candidates.len() == source_candidate_count
             && candidates
                 .iter()
                 .all(|candidate| candidate.traversal_complete);
@@ -220,7 +224,9 @@ impl Snapshot {
     }
 
     pub fn validate(&self) -> Result<(), SnapshotError> {
-        if self.schema_version != SNAPSHOT_SCHEMA_VERSION {
+        if !(MIN_SUPPORTED_SNAPSHOT_SCHEMA_VERSION..=SNAPSHOT_SCHEMA_VERSION)
+            .contains(&self.schema_version)
+        {
             return Err(SnapshotError::UnsupportedSchemaVersion(self.schema_version));
         }
 
@@ -302,17 +308,17 @@ impl SnapshotSummary {
 }
 
 impl SnapshotCandidate {
-    fn from_candidate(root: &Path, candidate: &Candidate) -> Self {
-        let relative = candidate.path.strip_prefix(root).unwrap_or(&candidate.path);
+    fn from_candidate(root: &Path, candidate: &Candidate) -> Option<Self> {
+        let relative = candidate.path.strip_prefix(root).ok()?;
         let relative_path = if relative.as_os_str().is_empty() {
             String::from(".")
         } else {
             relative.to_string_lossy().into_owned()
         };
 
-        Self {
+        Some(Self {
             relative_path,
-            path: candidate.path.to_string_lossy().into_owned(),
+            path: None,
             kind: candidate.kind,
             decision: candidate.decision,
             logical_bytes: candidate.logical_bytes,
@@ -327,7 +333,7 @@ impl SnapshotCandidate {
                     inode: identity.inode,
                 }),
             recovery_kind: candidate.recovery.kind.clone(),
-        }
+        })
     }
 
     fn exact_key(&self) -> String {
