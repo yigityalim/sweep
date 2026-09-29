@@ -275,6 +275,7 @@ Important properties:
 - imported snapshots are read-only;
 - new snapshots store candidate locations only as paths relative to the snapshot root; legacy v1 absolute candidate paths are accepted on read but never emitted by v2;
 - candidates that cannot be proven to reside under the requested snapshot root are omitted and force the snapshot incomplete;
+- imported candidate relative paths are validated before diffing; absolute, empty, or parent-traversing relative paths are rejected;
 - discovery errors and incomplete candidate traversal keep the snapshot marked incomplete;
 - default snapshot filenames never overwrite an existing same-second snapshot; a numeric suffix is allocated instead;
 - a process interrupted before atomic write cannot leave a complete-looking snapshot;
