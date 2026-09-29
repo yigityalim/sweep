@@ -152,12 +152,7 @@ fn workspace_membership(parent: &Path, restore: &DependencyRestore) -> Workspace
                 Err(detail) => return WorkspaceMembership::Unknown(detail),
             };
 
-            membership_from_patterns(
-                &relative,
-                patterns,
-                "pnpm-workspace.yaml",
-                "pnpm workspace",
-            )
+            membership_from_patterns(&relative, patterns, "pnpm-workspace.yaml", "pnpm workspace")
         }
         PackageManager::Npm | PackageManager::Yarn | PackageManager::Bun => {
             let package_json = restore.root.join("package.json");
@@ -347,9 +342,10 @@ fn unquote_workspace_scalar(value: &str) -> Option<String> {
     };
 
     if unquoted.is_empty()
-        || unquoted
-            .chars()
-            .any(|character| character.is_whitespace() || matches!(character, '[' | ']' | '{' | '}' | ',' | '&' | '#'))
+        || unquoted.chars().any(|character| {
+            character.is_whitespace()
+                || matches!(character, '[' | ']' | '{' | '}' | ',' | '&' | '#')
+        })
     {
         return None;
     }
