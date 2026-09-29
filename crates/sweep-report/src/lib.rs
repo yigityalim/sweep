@@ -87,7 +87,11 @@ pub struct ReportEvidence {
 }
 
 impl Report {
-    pub fn from_candidates(root: &Path, candidates: &[Candidate], redact_home: Option<&Path>) -> Self {
+    pub fn from_candidates(
+        root: &Path,
+        candidates: &[Candidate],
+        redact_home: Option<&Path>,
+    ) -> Self {
         let created_unix_seconds = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -386,18 +390,10 @@ fn render_toml(report: &Report) -> String {
     let _ = writeln!(out, "root = {}", toml_quote(&report.root));
     let _ = writeln!(out);
     let _ = writeln!(out, "[summary]");
-    let _ = writeln!(
-        out,
-        "candidate_count = {}",
-        report.summary.candidate_count
-    );
+    let _ = writeln!(out, "candidate_count = {}", report.summary.candidate_count);
     let _ = writeln!(out, "safe_count = {}", report.summary.safe_count);
     let _ = writeln!(out, "review_count = {}", report.summary.review_count);
-    let _ = writeln!(
-        out,
-        "protected_count = {}",
-        report.summary.protected_count
-    );
+    let _ = writeln!(out, "protected_count = {}", report.summary.protected_count);
     let _ = writeln!(out, "logical_bytes = {}", report.summary.logical_bytes);
     let _ = writeln!(
         out,
@@ -422,11 +418,7 @@ fn render_toml(report: &Report) -> String {
             "allocated_bytes_estimate = {}",
             candidate.allocated_bytes_estimate
         );
-        let _ = writeln!(
-            out,
-            "traversal_complete = {}",
-            candidate.traversal_complete
-        );
+        let _ = writeln!(out, "traversal_complete = {}", candidate.traversal_complete);
         if let Some(fingerprint) = &candidate.subtree_metadata_fingerprint {
             let _ = writeln!(
                 out,
@@ -437,19 +429,11 @@ fn render_toml(report: &Report) -> String {
 
         let _ = writeln!(out);
         let _ = writeln!(out, "[candidates.recovery]");
-        let _ = writeln!(
-            out,
-            "kind = {}",
-            toml_quote(&candidate.recovery.kind)
-        );
+        let _ = writeln!(out, "kind = {}", toml_quote(&candidate.recovery.kind));
         if let Some(command) = &candidate.recovery.command {
             let _ = writeln!(out, "command = {}", toml_quote(command));
         }
-        let _ = writeln!(
-            out,
-            "detail = {}",
-            toml_quote(&candidate.recovery.detail)
-        );
+        let _ = writeln!(out, "detail = {}", toml_quote(&candidate.recovery.detail));
 
         for evidence in &candidate.evidence {
             let _ = writeln!(out);
@@ -569,10 +553,7 @@ mod tests {
 
         assert_eq!(report.root, "~");
         assert_eq!(report.candidates[0].path, "~/Developer/app/target");
-        assert_eq!(
-            report.candidates[1].path,
-            "/Users/demonstration/target"
-        );
+        assert_eq!(report.candidates[1].path, "/Users/demonstration/target");
     }
 
     #[test]
