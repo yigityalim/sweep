@@ -5,9 +5,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{
-        Block, BorderType, Borders, Cell, Clear, Paragraph, Row, Table, Wrap,
-    },
+    widgets::{Block, BorderType, Borders, Cell, Clear, Paragraph, Row, Table, Wrap},
 };
 use sweep_report::{Report, ReportCandidate};
 
@@ -80,14 +78,22 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
                 .bg(theme.accent())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled("  developer storage graph", Style::default().fg(theme.muted())),
+        Span::styled(
+            "  developer storage graph",
+            Style::default().fg(theme.muted()),
+        ),
     ]);
 
     let right = Span::styled(status, Style::default().fg(theme.muted()));
     let width = area.width as usize;
     let left_width = 34usize;
     let spacer = width.saturating_sub(left_width + right.content.len());
-    let first = Line::from(vec![title.spans[0].clone(), title.spans[1].clone(), Span::raw(" ".repeat(spacer)), right]);
+    let first = Line::from(vec![
+        title.spans[0].clone(),
+        title.spans[1].clone(),
+        Span::raw(" ".repeat(spacer)),
+        right,
+    ]);
 
     let scope = Line::from(vec![
         Span::styled(" scope ", Style::default().fg(theme.muted())),
@@ -100,7 +106,11 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
 
     frame.render_widget(
         Paragraph::new(vec![first, scope])
-            .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(theme.border())))
+            .block(
+                Block::default()
+                    .borders(Borders::BOTTOM)
+                    .border_style(Style::default().fg(theme.border())),
+            )
             .style(theme.base()),
         area,
     );
@@ -157,8 +167,19 @@ fn render_summary(frame: &mut Frame<'_>, area: Rect, report: Option<&Report>, th
             );
         }
         None => {
-            for (index, label) in ["OBSERVED", "SAFE", "REVIEW", "PROTECTED"].iter().enumerate() {
-                metric(frame, cards[index], label, "--", "scanning", theme.muted(), theme);
+            for (index, label) in ["OBSERVED", "SAFE", "REVIEW", "PROTECTED"]
+                .iter()
+                .enumerate()
+            {
+                metric(
+                    frame,
+                    cards[index],
+                    label,
+                    "--",
+                    "scanning",
+                    theme.muted(),
+                    theme,
+                );
             }
         }
     }
@@ -183,12 +204,19 @@ fn metric(
         Line::from(Span::styled(label, Style::default().fg(theme.muted()))),
         Line::from(Span::styled(
             value,
-            Style::default().fg(value_color).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(value_color)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(subtitle, Style::default().fg(theme.muted()))),
     ];
 
-    frame.render_widget(Paragraph::new(lines).block(block).alignment(Alignment::Left), area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .alignment(Alignment::Left),
+        area,
+    );
 }
 
 fn render_loading(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
@@ -204,10 +232,18 @@ fn render_loading(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
         Line::from(""),
         Line::from(vec![
             Span::styled(format!("{spinner} "), Style::default().fg(theme.accent())),
-            Span::styled(title, Style::default().fg(theme.text()).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                title,
+                Style::default()
+                    .fg(theme.text())
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]),
         Line::from(""),
-        Line::from(Span::styled(app.root_label(), Style::default().fg(theme.muted()))),
+        Line::from(Span::styled(
+            app.root_label(),
+            Style::default().fg(theme.muted()),
+        )),
         Line::from(""),
     ];
 
@@ -232,16 +268,14 @@ fn render_loading(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
     }
 
     frame.render_widget(
-        Paragraph::new(lines)
-            .alignment(Alignment::Center)
-            .block(
-                Block::default()
-                    .title(" live scan ")
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(theme.accent()))
-                    .style(theme.panel()),
-            ),
+        Paragraph::new(lines).alignment(Alignment::Center).block(
+            Block::default()
+                .title(" live scan ")
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(theme.accent()))
+                .style(theme.panel()),
+        ),
         inner,
     );
 }
@@ -355,12 +389,25 @@ fn render_inspector(
 fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
     let line = if app.input_mode == InputMode::Search {
         Line::from(vec![
-            Span::styled(" / ", Style::default().fg(theme.background()).bg(theme.accent()).add_modifier(Modifier::BOLD)),
             Span::styled(
-                if app.query.is_empty() { "type to search".to_owned() } else { app.query.clone() },
+                " / ",
+                Style::default()
+                    .fg(theme.background())
+                    .bg(theme.accent())
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                if app.query.is_empty() {
+                    "type to search".to_owned()
+                } else {
+                    app.query.clone()
+                },
                 Style::default().fg(theme.text()),
             ),
-            Span::styled("   enter/esc done   ctrl-u clear", Style::default().fg(theme.muted())),
+            Span::styled(
+                "   enter/esc done   ctrl-u clear",
+                Style::default().fg(theme.muted()),
+            ),
         ])
     } else {
         Line::from(vec![
@@ -376,9 +423,11 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
     };
 
     frame.render_widget(
-        Paragraph::new(line)
-            .style(theme.base())
-            .block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(theme.border()))),
+        Paragraph::new(line).style(theme.base()).block(
+            Block::default()
+                .borders(Borders::TOP)
+                .border_style(Style::default().fg(theme.border())),
+        ),
         area,
     );
 }
@@ -398,7 +447,9 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
     let lines = vec![
         Line::from(Span::styled(
             "Navigation",
-            Style::default().fg(theme.accent()).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.accent())
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(format!("{marker} j / k / arrows     move selection")),
         Line::from(format!("{marker} g g / G            first / last")),
@@ -415,7 +466,9 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
         Line::from(""),
         Line::from(Span::styled(
             "Safety",
-            Style::default().fg(theme.safe()).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.safe())
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from("This surface is descriptive only."),
         Line::from("It cannot mutate files or turn a report into deletion authority."),
@@ -433,16 +486,14 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
     ];
 
     frame.render_widget(
-        Paragraph::new(lines)
-            .wrap(Wrap { trim: false })
-            .block(
-                Block::default()
-                    .title(" Sweep keymap ")
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(theme.accent()))
-                    .style(theme.panel()),
-            ),
+        Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .title(" Sweep keymap ")
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(theme.accent()))
+                .style(theme.panel()),
+        ),
         popup,
     );
 }
@@ -470,17 +521,31 @@ fn render_inspect_overlay(frame: &mut Frame<'_>, area: Rect, app: &App, theme: T
     );
 }
 
-fn candidate_lines(candidate: &ReportCandidate, theme: Theme, expanded: bool) -> Vec<Line<'static>> {
+fn candidate_lines(
+    candidate: &ReportCandidate,
+    theme: Theme,
+    expanded: bool,
+) -> Vec<Line<'static>> {
     let mut lines = vec![
         Line::from(Span::styled(
             candidate.path.clone(),
-            Style::default().fg(theme.text()).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.text())
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        field("decision", &candidate.decision, theme.decision(&candidate.decision), theme),
+        field(
+            "decision",
+            &candidate.decision,
+            theme.decision(&candidate.decision),
+            theme,
+        ),
         field(
             "allocated",
-            &format!("{} estimate", format_bytes(candidate.allocated_bytes_estimate)),
+            &format!(
+                "{} estimate",
+                format_bytes(candidate.allocated_bytes_estimate)
+            ),
             Style::default().fg(theme.text()),
             theme,
         ),
@@ -492,14 +557,24 @@ fn candidate_lines(candidate: &ReportCandidate, theme: Theme, expanded: bool) ->
         ),
         field(
             "traversal",
-            if candidate.traversal_complete { "complete" } else { "incomplete" },
-            Style::default().fg(if candidate.traversal_complete { theme.safe() } else { theme.review() }),
+            if candidate.traversal_complete {
+                "complete"
+            } else {
+                "incomplete"
+            },
+            Style::default().fg(if candidate.traversal_complete {
+                theme.safe()
+            } else {
+                theme.review()
+            }),
             theme,
         ),
         Line::from(""),
         Line::from(Span::styled(
             "RECOVERY",
-            Style::default().fg(theme.muted()).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.muted())
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(candidate.recovery.detail.clone()),
     ];
@@ -514,7 +589,9 @@ fn candidate_lines(candidate: &ReportCandidate, theme: Theme, expanded: bool) ->
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "EVIDENCE",
-        Style::default().fg(theme.muted()).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.muted())
+            .add_modifier(Modifier::BOLD),
     )));
 
     let evidence_limit = if expanded { usize::MAX } else { 7 };
@@ -525,15 +602,24 @@ fn candidate_lines(candidate: &ReportCandidate, theme: Theme, expanded: bool) ->
             _ => ("?", theme.review()),
         };
         lines.push(Line::from(vec![
-            Span::styled(format!("{symbol} "), Style::default().fg(color).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("{}  ", evidence.code), Style::default().fg(theme.text())),
+            Span::styled(
+                format!("{symbol} "),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{}  ", evidence.code),
+                Style::default().fg(theme.text()),
+            ),
             Span::styled(evidence.detail.clone(), Style::default().fg(theme.muted())),
         ]));
     }
 
     if !expanded && candidate.evidence.len() > evidence_limit {
         lines.push(Line::from(Span::styled(
-            format!("… {} more — press e", candidate.evidence.len() - evidence_limit),
+            format!(
+                "… {} more — press e",
+                candidate.evidence.len() - evidence_limit
+            ),
             Style::default().fg(theme.muted()),
         )));
     }
@@ -565,7 +651,10 @@ fn render_too_small(frame: &mut Frame<'_>, area: Rect, theme: Theme) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            format!("Current: {}x{}   Minimum: {MIN_WIDTH}x{MIN_HEIGHT}", area.width, area.height),
+            format!(
+                "Current: {}x{}   Minimum: {MIN_WIDTH}x{MIN_HEIGHT}",
+                area.width, area.height
+            ),
             Style::default().fg(theme.muted()),
         )),
     ])
