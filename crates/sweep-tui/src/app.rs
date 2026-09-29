@@ -10,14 +10,13 @@ use std::{
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
-    style::Color,
     widgets::TableState,
 };
 use sweep_report::{Report, ReportCandidate};
 use sweep_scan::{ScanOptions, scan_with_diagnostics};
 use tachyonfx::{EffectManager, Interpolation, Motion, fx};
 
-use crate::{display_path, ui};
+use crate::{display_path, theme::Theme, ui};
 
 const ACTIVE_FRAME_TIME: Duration = Duration::from_millis(33);
 const IDLE_FRAME_TIME: Duration = Duration::from_millis(120);
@@ -160,7 +159,7 @@ impl App {
                 Motion::LeftToRight,
                 16,
                 0,
-                Color::Rgb(7, 10, 15),
+                Theme::new(false).background(),
                 (420, Interpolation::QuadOut),
             ));
         }
@@ -302,7 +301,7 @@ impl App {
 
                 if !self.no_color {
                     self.effects.add_effect(fx::fade_from_fg(
-                        Color::Rgb(72, 86, 104),
+                        Theme::new(false).muted(),
                         (260, Interpolation::QuadOut),
                     ));
                 }
