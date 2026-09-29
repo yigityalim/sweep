@@ -13,7 +13,10 @@ use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     widgets::TableState,
 };
-use sweep_report::{OutputFormat, Report, ReportCandidate, SnapshotDiff};
+use sweep_report::{
+    ByteDelta, DeltaDirection, OutputFormat, Report, ReportCandidate, Snapshot, SnapshotDiff,
+    candidate_kind_name,
+};
 use sweep_scan::{ScanOptions, scan_with_diagnostics};
 use tachyonfx::{EffectManager, Interpolation, Motion, fx};
 
@@ -21,7 +24,7 @@ use crate::{
     display_path,
     preview::{
         BrowseEntry, GrowthData, copy_report, copy_to_clipboard, history_directory, list_directory,
-        load_growth, reveal_in_finder, save_report,
+        load_growth, load_growth_against_current, reveal_in_finder, save_report,
     },
     theme::Theme,
     ui,
@@ -89,6 +92,7 @@ impl CandidateFilter {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SortKey {
     Size,
+    Growth,
     Decision,
     Kind,
     Path,
@@ -98,6 +102,7 @@ impl SortKey {
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::Size => "size",
+            Self::Growth => "growth",
             Self::Decision => "decision",
             Self::Kind => "type",
             Self::Path => "path",
@@ -106,7 +111,8 @@ impl SortKey {
 
     const fn next(self) -> Self {
         match self {
-            Self::Size => Self::Decision,
+            Self::Size => Self::Growth,
+            Self::Growth => Self::Decision,
             Self::Decision => Self::Kind,
             Self::Kind => Self::Path,
             Self::Path => Self::Size,
@@ -223,6 +229,7 @@ pub(crate) enum Drawer {
 enum ScanMessage {
     Finished {
         report: Report,
+        snapshot: Snapshot,
         elapsed: Duration,
         discovery_error_count: usize,
     },
@@ -238,6 +245,7 @@ pub(crate) struct App {
     pub(crate) browse_entries: Vec<BrowseEntry>,
     pub(crate) browse_error: Option<String>,
     pub(crate) growth: GrowthData,
+    pub(crate) live_snapshot: Option<Snapshot>,
     pub(crate) view: View,
     pub(crate) filter: CandidateFilter,
     pub(crate) sort: SortKey,
@@ -291,6 +299,7 @@ impl App {
             browse_entries: Vec::new(),
             browse_error: None,
             growth,
+            live_snapshot: None,
             view: View::Candidates,
             filter: CandidateFilter::All,
             sort: SortKey::Size,
@@ -471,11 +480,23 @@ impl App {
             .spawn(move || {
                 let started = Instant::now();
                 let message = match scan_with_diagnostics(&root, &ScanOptions::default()) {
-                    Ok(scan) => ScanMessage::Finished {
-                        report: Report::from_candidates(&root, &scan.candidates, home.as_deref()),
-                        elapsed: started.elapsed(),
-                        discovery_error_count: scan.discovery_error_count,
-                    },
+                    Ok(scan) => {
+                        let report =
+                            Report::from_candidates(&root, &scan.candidates, home.as_deref());
+                        let snapshot = Snapshot::from_candidates(
+                            &root,
+                            &scan.candidates,
+                            scan.discovery_complete,
+                            scan.discovery_error_count,
+                        );
+
+                        ScanMessage::Finished {
+                            report,
+                            snapshot,
+                            elapsed: started.elapsed(),
+                            discovery_error_count: scan.discovery_error_count,
+                        }
+                    }
                     Err(error) => ScanMessage::Failed(error.to_string()),
                 };
                 let _ = sender.send(message);
@@ -512,9 +533,20 @@ impl App {
         match message {
             ScanMessage::Finished {
                 report,
+                snapshot,
                 elapsed,
                 discovery_error_count,
             } => {
+                self.growth = load_growth_against_current(&self.root, &snapshot).unwrap_or_else(
+                    |error| GrowthData {
+                        diff: None,
+                        snapshot_count: 0,
+                        invalid_snapshot_count: 0,
+                        live_comparison: true,
+                        message: format!("Could not compare live growth: {error}"),
+                    },
+                );
+                self.live_snapshot = Some(snapshot);
                 self.report = Some(report);
                 self.last_scan_elapsed = Some(elapsed);
                 self.scan_elapsed = elapsed;
