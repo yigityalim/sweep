@@ -127,3 +127,47 @@ fn ignored_node_modules_without_lockfile_requires_review() {
     assert_eq!(candidate.kind, CandidateKind::NodeModules);
     assert_eq!(candidate.decision, Decision::Review);
 }
+
+#[test]
+fn ignored_tagged_python_tool_cache_is_safe() {
+    let repo = tempdir().unwrap();
+    init_git(repo.path());
+
+    fs::write(
+        repo.path().join("pyproject.toml"),
+        "[project]\nname='demo'\nversion='0.1.0'\n",
+    )
+    .unwrap();
+    fs::write(repo.path().join(".gitignore"), "/.ruff_cache\n").unwrap();
+    fs::create_dir(repo.path().join(".ruff_cache")).unwrap();
+    fs::write(
+        repo.path().join(".ruff_cache/CACHEDIR.TAG"),
+        "Signature: 8a477f597d28d172789f06886806bc55\n",
+    )
+    .unwrap();
+
+    let candidate = classify_path(&repo.path().join(".ruff_cache"));
+
+    assert_eq!(candidate.kind, CandidateKind::RuffCache);
+    assert_eq!(candidate.decision, Decision::Safe);
+}
+
+#[test]
+fn python_virtual_environment_is_review_only() {
+    let repo = tempdir().unwrap();
+    init_git(repo.path());
+
+    fs::write(
+        repo.path().join("pyproject.toml"),
+        "[project]\nname='demo'\nversion='0.1.0'\n",
+    )
+    .unwrap();
+    fs::write(repo.path().join(".gitignore"), "/.venv\n").unwrap();
+    fs::create_dir(repo.path().join(".venv")).unwrap();
+    fs::write(repo.path().join(".venv/pyvenv.cfg"), "home = /usr/bin\n").unwrap();
+
+    let candidate = classify_path(&repo.path().join(".venv"));
+
+    assert_eq!(candidate.kind, CandidateKind::PythonVirtualEnv);
+    assert_eq!(candidate.decision, Decision::Review);
+}
