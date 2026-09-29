@@ -929,6 +929,8 @@ impl App {
         self.input_mode = InputMode::Normal;
         self.overlay = None;
         self.drawer = None;
+        self.pending_family = None;
+        self.inspect_scroll = 0;
 
         match view {
             View::Candidates => self.clamp_candidate_selection(),
@@ -1049,15 +1051,47 @@ impl App {
         }
     }
 
-    fn copy_current_report(&mut self) {
+    fn copy_current_report(&mut self, format: OutputFormat) {
         let Some(report) = self.report.as_ref() else {
             self.status_message = Some(String::from("A completed scan is required first."));
             return;
         };
 
-        match copy_text_report(report) {
+        match copy_report(report, format) {
             Ok(()) => {
-                self.status_message = Some(String::from("Copied text report to clipboard."));
+                self.status_message = Some(format!(
+                    "Copied {} report to clipboard.",
+                    format.as_str()
+                ));
+            }
+            Err(error) => {
+                self.status_message = Some(format!("Clipboard copy failed: {error}"));
+            }
+        }
+    }
+
+    fn copy_selected_path(&mut self) {
+        let path = match self.view {
+            View::Candidates => self
+                .selected_candidate()
+                .and_then(|candidate| self.expand_report_path(&candidate.path)),
+            View::Browse => self
+                .selected_browse_entry()
+                .map(|entry| entry.path.clone())
+                .or_else(|| Some(self.browse_path.clone())),
+            View::Growth | View::History => Some(self.root.clone()),
+        };
+
+        let Some(path) = path else {
+            self.status_message = Some(String::from("No path selected."));
+            return;
+        };
+
+        let value = path.to_string_lossy().into_owned();
+        match copy_to_clipboard(&value) {
+            Ok(()) => {
+                self.status_message =
+                    Some(format!("Copied path: {}", display_path(&path)));
             }
             Err(error) => {
                 self.status_message = Some(format!("Clipboard copy failed: {error}"));
