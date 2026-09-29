@@ -392,13 +392,13 @@ fn render_candidate_table(frame: &mut Frame<'_>, area: Rect, app: &mut App, them
         "RECOVERY",
         "PATH",
     ])
-        .style(
-            Style::default()
-                .fg(theme.muted())
-                .bg(theme.surface())
-                .add_modifier(Modifier::BOLD),
-        )
-        .bottom_margin(1);
+    .style(
+        Style::default()
+            .fg(theme.muted())
+            .bg(theme.surface())
+            .add_modifier(Modifier::BOLD),
+    )
+    .bottom_margin(1);
 
     let visible_allocated_bytes = indices
         .iter()
