@@ -44,7 +44,11 @@ impl fmt::Display for PlanError {
                 write!(formatter, "plan root is not absolute: {}", root.display())
             }
             Self::CandidateNotSafe(path) => {
-                write!(formatter, "plan contains a non-safe candidate: {}", path.display())
+                write!(
+                    formatter,
+                    "plan contains a non-safe candidate: {}",
+                    path.display()
+                )
             }
             Self::CandidateOutsideRoot(path) => {
                 write!(
@@ -61,7 +65,11 @@ impl fmt::Display for PlanError {
                 )
             }
             Self::DuplicateCandidate(path) => {
-                write!(formatter, "plan contains a duplicate candidate: {}", path.display())
+                write!(
+                    formatter,
+                    "plan contains a duplicate candidate: {}",
+                    path.display()
+                )
             }
             Self::IncompleteTraversal(path) => {
                 write!(
@@ -152,9 +160,7 @@ impl Plan {
                 return Err(PlanError::MissingIdentity(candidate.path.clone()));
             }
             if candidate.subtree_metadata_fingerprint.is_none() {
-                return Err(PlanError::MissingSubtreeFingerprint(
-                    candidate.path.clone(),
-                ));
+                return Err(PlanError::MissingSubtreeFingerprint(candidate.path.clone()));
             }
             if candidate.recovery.kind == RecoveryKind::None {
                 return Err(PlanError::MissingRecoveryContract(candidate.path.clone()));
@@ -175,9 +181,7 @@ impl Plan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        CandidateKind, Evidence, FileIdentity, RecoveryContract, RecoveryKind,
-    };
+    use crate::{CandidateKind, Evidence, FileIdentity, RecoveryContract, RecoveryKind};
 
     fn candidate(path: &str, decision: Decision) -> Candidate {
         Candidate {
