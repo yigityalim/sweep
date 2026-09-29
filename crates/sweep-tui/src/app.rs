@@ -13,7 +13,10 @@ use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     widgets::TableState,
 };
-use sweep_report::{OutputFormat, Report, ReportCandidate, SnapshotDiff};
+use sweep_report::{
+    ByteDelta, DeltaDirection, OutputFormat, Report, ReportCandidate, Snapshot, SnapshotDiff,
+    candidate_kind_name,
+};
 use sweep_scan::{ScanOptions, scan_with_diagnostics};
 use tachyonfx::{EffectManager, Interpolation, Motion, fx};
 
@@ -21,7 +24,7 @@ use crate::{
     display_path,
     preview::{
         BrowseEntry, GrowthData, copy_report, copy_to_clipboard, history_directory, list_directory,
-        load_growth, reveal_in_finder, save_report,
+        load_growth, load_growth_against_current, reveal_in_finder, save_report,
     },
     theme::Theme,
     ui,
@@ -89,6 +92,7 @@ impl CandidateFilter {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SortKey {
     Size,
+    Growth,
     Decision,
     Kind,
     Path,
@@ -98,6 +102,7 @@ impl SortKey {
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::Size => "size",
+            Self::Growth => "growth",
             Self::Decision => "decision",
             Self::Kind => "type",
             Self::Path => "path",
@@ -106,7 +111,8 @@ impl SortKey {
 
     const fn next(self) -> Self {
         match self {
-            Self::Size => Self::Decision,
+            Self::Size => Self::Growth,
+            Self::Growth => Self::Decision,
             Self::Decision => Self::Kind,
             Self::Kind => Self::Path,
             Self::Path => Self::Size,
@@ -223,6 +229,7 @@ pub(crate) enum Drawer {
 enum ScanMessage {
     Finished {
         report: Report,
+        snapshot: Box<Snapshot>,
         elapsed: Duration,
         discovery_error_count: usize,
     },
@@ -238,6 +245,7 @@ pub(crate) struct App {
     pub(crate) browse_entries: Vec<BrowseEntry>,
     pub(crate) browse_error: Option<String>,
     pub(crate) growth: GrowthData,
+    pub(crate) live_snapshot: Option<Snapshot>,
     pub(crate) view: View,
     pub(crate) filter: CandidateFilter,
     pub(crate) sort: SortKey,
@@ -279,6 +287,7 @@ impl App {
             diff: None,
             snapshot_count: 0,
             invalid_snapshot_count: 0,
+            live_comparison: false,
             message: format!("Could not load snapshots: {error}"),
         });
 
@@ -291,6 +300,7 @@ impl App {
             browse_entries: Vec::new(),
             browse_error: None,
             growth,
+            live_snapshot: None,
             view: View::Candidates,
             filter: CandidateFilter::All,
             sort: SortKey::Size,
@@ -384,11 +394,23 @@ impl App {
             .collect();
 
         indices.sort_by(|left, right| {
-            compare_candidates(
-                &report.candidates[*left],
-                &report.candidates[*right],
-                self.sort,
-            )
+            let left_candidate = &report.candidates[*left];
+            let right_candidate = &report.candidates[*right];
+
+            if self.sort == SortKey::Growth {
+                compare_growth(
+                    self.candidate_growth_delta(left_candidate),
+                    self.candidate_growth_delta(right_candidate),
+                )
+                .then_with(|| {
+                    right_candidate
+                        .allocated_bytes_estimate
+                        .cmp(&left_candidate.allocated_bytes_estimate)
+                })
+                .then_with(|| left_candidate.path.cmp(&right_candidate.path))
+            } else {
+                compare_candidates(left_candidate, right_candidate, self.sort)
+            }
         });
 
         indices
@@ -438,6 +460,23 @@ impl App {
         self.growth.diff.as_ref()
     }
 
+    pub(crate) fn candidate_growth_delta(&self, candidate: &ReportCandidate) -> Option<ByteDelta> {
+        if !self.growth.live_comparison {
+            return None;
+        }
+
+        let diff = self.growth.diff.as_ref()?;
+        let absolute = self.expand_report_path(&candidate.path)?;
+        let relative = absolute.strip_prefix(&self.root).ok()?;
+        let relative_path = if relative.as_os_str().is_empty() {
+            String::from(".")
+        } else {
+            relative.to_string_lossy().into_owned()
+        };
+
+        growth_delta_for(diff, &relative_path, &candidate.kind)
+    }
+
     pub(crate) fn visible_palette_actions(&self) -> Vec<PaletteAction> {
         let query = self.palette_query.trim().to_lowercase();
         PaletteAction::ALL
@@ -471,11 +510,23 @@ impl App {
             .spawn(move || {
                 let started = Instant::now();
                 let message = match scan_with_diagnostics(&root, &ScanOptions::default()) {
-                    Ok(scan) => ScanMessage::Finished {
-                        report: Report::from_candidates(&root, &scan.candidates, home.as_deref()),
-                        elapsed: started.elapsed(),
-                        discovery_error_count: scan.discovery_error_count,
-                    },
+                    Ok(scan) => {
+                        let report =
+                            Report::from_candidates(&root, &scan.candidates, home.as_deref());
+                        let snapshot = Snapshot::from_candidates(
+                            &root,
+                            &scan.candidates,
+                            scan.discovery_complete,
+                            scan.discovery_error_count,
+                        );
+
+                        ScanMessage::Finished {
+                            report,
+                            snapshot: Box::new(snapshot),
+                            elapsed: started.elapsed(),
+                            discovery_error_count: scan.discovery_error_count,
+                        }
+                    }
                     Err(error) => ScanMessage::Failed(error.to_string()),
                 };
                 let _ = sender.send(message);
@@ -512,9 +563,21 @@ impl App {
         match message {
             ScanMessage::Finished {
                 report,
+                snapshot,
                 elapsed,
                 discovery_error_count,
             } => {
+                self.growth =
+                    load_growth_against_current(&self.root, &snapshot).unwrap_or_else(|error| {
+                        GrowthData {
+                            diff: None,
+                            snapshot_count: 0,
+                            invalid_snapshot_count: 0,
+                            live_comparison: true,
+                            message: format!("Could not compare live growth: {error}"),
+                        }
+                    });
+                self.live_snapshot = Some(*snapshot);
                 self.report = Some(report);
                 self.last_scan_elapsed = Some(elapsed);
                 self.scan_elapsed = elapsed;
@@ -943,10 +1006,16 @@ impl App {
     }
 
     fn reload_growth(&mut self) {
-        self.growth = load_growth(&self.root).unwrap_or_else(|error| GrowthData {
+        self.growth = if let Some(snapshot) = self.live_snapshot.as_ref() {
+            load_growth_against_current(&self.root, snapshot)
+        } else {
+            load_growth(&self.root)
+        }
+        .unwrap_or_else(|error| GrowthData {
             diff: None,
             snapshot_count: 0,
             invalid_snapshot_count: 0,
+            live_comparison: self.live_snapshot.is_some(),
             message: format!("Could not load snapshots: {error}"),
         });
         self.status_message = Some(self.growth.message.clone());
@@ -1139,6 +1208,7 @@ impl App {
 
         self.root = root.clone();
         self.report = None;
+        self.live_snapshot = None;
         self.last_error = None;
         self.discovery_error_count = 0;
         self.table_state.select(None);
@@ -1353,6 +1423,7 @@ fn compare_candidates(left: &ReportCandidate, right: &ReportCandidate, sort: Sor
             .allocated_bytes_estimate
             .cmp(&left.allocated_bytes_estimate)
             .then_with(|| left.path.cmp(&right.path)),
+        SortKey::Growth => Ordering::Equal,
         SortKey::Decision => decision_rank(&left.decision)
             .cmp(&decision_rank(&right.decision))
             .then_with(|| {
@@ -1366,6 +1437,52 @@ fn compare_candidates(left: &ReportCandidate, right: &ReportCandidate, sort: Sor
                 .cmp(&left.allocated_bytes_estimate)
         }),
         SortKey::Path => left.path.cmp(&right.path),
+    }
+}
+
+fn growth_delta_for(diff: &SnapshotDiff, relative_path: &str, kind: &str) -> Option<ByteDelta> {
+    if let Some(candidate) = diff.changed.iter().find(|candidate| {
+        candidate.relative_path == relative_path && candidate_kind_name(candidate.kind) == kind
+    }) {
+        return Some(candidate.allocated_bytes_estimate_delta);
+    }
+
+    if let Some(candidate) = diff.added.iter().find(|candidate| {
+        candidate.relative_path == relative_path && candidate_kind_name(candidate.kind) == kind
+    }) {
+        return Some(ByteDelta {
+            direction: DeltaDirection::Increased,
+            bytes: candidate.allocated_bytes_estimate,
+        });
+    }
+
+    if let Some(candidate) = diff.moved.iter().find(|candidate| {
+        candidate.to_relative_path == relative_path && candidate_kind_name(candidate.kind) == kind
+    }) {
+        return Some(candidate.allocated_bytes_estimate_delta);
+    }
+
+    Some(ByteDelta {
+        direction: DeltaDirection::Unchanged,
+        bytes: 0,
+    })
+}
+
+fn compare_growth(left: Option<ByteDelta>, right: Option<ByteDelta>) -> Ordering {
+    growth_sort_value(right)
+        .cmp(&growth_sort_value(left))
+        .then_with(|| right.is_some().cmp(&left.is_some()))
+}
+
+fn growth_sort_value(delta: Option<ByteDelta>) -> i128 {
+    let Some(delta) = delta else {
+        return i128::MIN;
+    };
+
+    match delta.direction {
+        DeltaDirection::Increased => i128::from(delta.bytes),
+        DeltaDirection::Unchanged => 0,
+        DeltaDirection::Decreased => -i128::from(delta.bytes),
     }
 }
 
@@ -1510,6 +1627,96 @@ mod tests {
             compare_candidates(&small, &large, SortKey::Size),
             Ordering::Greater
         );
+    }
+
+    #[test]
+    fn live_growth_maps_changed_added_and_unchanged_candidates() {
+        let diff: SnapshotDiff = serde_json::from_str(
+            r#"{
+                "schema_version": 1,
+                "root": "/tmp",
+                "from_created_unix_seconds": 1,
+                "to_created_unix_seconds": 2,
+                "complete": true,
+                "summary": {
+                    "before_allocated_bytes_estimate": 100,
+                    "after_allocated_bytes_estimate": 180,
+                    "allocated_bytes_estimate_delta": {
+                        "direction": "increased",
+                        "bytes": 80
+                    },
+                    "added_count": 1,
+                    "removed_count": 0,
+                    "changed_count": 1,
+                    "moved_count": 0
+                },
+                "added": [{
+                    "relative_path": "new/target",
+                    "kind": "rust_target",
+                    "decision": "safe",
+                    "allocated_bytes_estimate": 50
+                }],
+                "removed": [],
+                "changed": [{
+                    "relative_path": "changed/target",
+                    "kind": "rust_target",
+                    "before_decision": "safe",
+                    "after_decision": "safe",
+                    "before_allocated_bytes_estimate": 20,
+                    "after_allocated_bytes_estimate": 50,
+                    "allocated_bytes_estimate_delta": {
+                        "direction": "increased",
+                        "bytes": 30
+                    },
+                    "fingerprint_changed": true,
+                    "traversal_complete_changed": false
+                }],
+                "moved": []
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            growth_delta_for(&diff, "changed/target", "cargo-target"),
+            Some(ByteDelta {
+                direction: DeltaDirection::Increased,
+                bytes: 30,
+            })
+        );
+        assert_eq!(
+            growth_delta_for(&diff, "new/target", "cargo-target"),
+            Some(ByteDelta {
+                direction: DeltaDirection::Increased,
+                bytes: 50,
+            })
+        );
+        assert_eq!(
+            growth_delta_for(&diff, "same/target", "cargo-target"),
+            Some(ByteDelta {
+                direction: DeltaDirection::Unchanged,
+                bytes: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn growth_sort_orders_increase_before_unchanged_before_shrink() {
+        let increase = Some(ByteDelta {
+            direction: DeltaDirection::Increased,
+            bytes: 20,
+        });
+        let unchanged = Some(ByteDelta {
+            direction: DeltaDirection::Unchanged,
+            bytes: 0,
+        });
+        let decrease = Some(ByteDelta {
+            direction: DeltaDirection::Decreased,
+            bytes: 10,
+        });
+
+        assert_eq!(compare_growth(increase, unchanged), Ordering::Less);
+        assert_eq!(compare_growth(unchanged, decrease), Ordering::Less);
+        assert_eq!(compare_growth(decrease, None), Ordering::Less);
     }
 
     #[test]

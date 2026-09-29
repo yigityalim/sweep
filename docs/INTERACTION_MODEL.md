@@ -180,7 +180,7 @@ s t            save TOML report
 
 The inspect overlay is scrollable with `j/k`, arrow keys, and page up/down. Its evidence summary reports proven/unknown/refuted counts without reinterpreting classification.
 
-Growth reads the latest two valid snapshots for the exact current scope and renders a descriptive diff. Invalid snapshots are ignored with an explicit count. History is an empty preview surface until a mutation engine can produce measured cleanup receipts.
+Growth uses the latest valid snapshot for the exact current scope as a baseline once a live scan completes. The Candidates table shows a `Δ SNAPSHOT` column and can sort by growth; the inspector shows the selected candidate's live delta. Before a live scan exists, the Growth view can still compare the latest two valid snapshots. Invalid snapshots are ignored with an explicit count. History is an empty preview surface until a mutation engine can produce measured cleanup receipts.
 
 Option-left / option-right traverses scan-scope history. Changing scope always starts a fresh live scan.
 
@@ -238,6 +238,7 @@ Filters should compose:
 Sort keys:
 
 - allocated estimate;
+- growth since snapshot;
 - logical size;
 - decision;
 - provider;
