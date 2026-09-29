@@ -1,4 +1,9 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
+use serde_json::Value;
 
 use sweep_core::{CandidateKind, RecoveryContract, RecoveryKind};
 
@@ -88,10 +93,24 @@ fn node_modules(parent: &Path) -> ProviderAssessment {
             assessment.prove(
                 "dependency_lockfile",
                 format!(
-                    "Supported dependency lockfile inherited from an ancestor repository scope: {}.",
+                    "Supported dependency lockfile present at ancestor install boundary: {}.",
                     restore.lockfile
                 ),
             );
+
+            match workspace_membership(parent, &restore) {
+                WorkspaceMembership::Proven { source, pattern } => {
+                    assessment.prove(
+                        "workspace_membership",
+                        format!(
+                            "Package is explicitly covered by {source} workspace pattern {pattern:?}."
+                        ),
+                    );
+                }
+                WorkspaceMembership::Unknown(detail) => {
+                    assessment.review("workspace_membership", detail);
+                }
+            }
         }
     } else {
         assessment.review(
@@ -101,6 +120,319 @@ fn node_modules(parent: &Path) -> ProviderAssessment {
     }
 
     assessment
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum WorkspaceMembership {
+    Proven {
+        source: &'static str,
+        pattern: String,
+    },
+    Unknown(String),
+}
+
+fn workspace_membership(parent: &Path, restore: &DependencyRestore) -> WorkspaceMembership {
+    let Ok(relative) = parent.strip_prefix(&restore.root) else {
+        return WorkspaceMembership::Unknown(String::from(
+            "Ancestor lockfile was found, but the package path is not contained by its install boundary.",
+        ));
+    };
+    let relative = relative.to_string_lossy().replace('\\', "/");
+
+    match restore.manager {
+        PackageManager::Pnpm => {
+            let workspace = restore.root.join("pnpm-workspace.yaml");
+            let patterns = match parse_pnpm_workspace_patterns(&workspace) {
+                Ok(Some(patterns)) => patterns,
+                Ok(None) => {
+                    return WorkspaceMembership::Unknown(String::from(
+                        "Ancestor pnpm lockfile was found, but pnpm-workspace.yaml is missing; workspace membership is not proven.",
+                    ));
+                }
+                Err(detail) => return WorkspaceMembership::Unknown(detail),
+            };
+
+            membership_from_patterns(&relative, patterns, "pnpm-workspace.yaml", "pnpm workspace")
+        }
+        PackageManager::Npm | PackageManager::Yarn | PackageManager::Bun => {
+            let package_json = restore.root.join("package.json");
+            let patterns = match parse_package_json_workspace_patterns(&package_json) {
+                Ok(Some(patterns)) => patterns,
+                Ok(None) => {
+                    return WorkspaceMembership::Unknown(String::from(
+                        "Ancestor lockfile was found, but the install-boundary package.json has no supported workspaces declaration.",
+                    ));
+                }
+                Err(detail) => return WorkspaceMembership::Unknown(detail),
+            };
+
+            membership_from_patterns(
+                &relative,
+                patterns,
+                "package.json workspaces",
+                "package-manager workspace",
+            )
+        }
+    }
+}
+
+fn membership_from_patterns(
+    relative: &str,
+    patterns: Vec<String>,
+    source: &'static str,
+    label: &'static str,
+) -> WorkspaceMembership {
+    let mut included_pattern = None;
+    let mut excluded = false;
+    let mut unsupported_pattern = false;
+
+    for pattern in patterns {
+        let (negative, value) = pattern
+            .strip_prefix('!')
+            .map_or((false, pattern.as_str()), |value| (true, value));
+
+        let Some(matches) = simple_workspace_pattern_matches(value, relative) else {
+            unsupported_pattern = true;
+            continue;
+        };
+        if !matches {
+            continue;
+        }
+
+        if negative {
+            excluded = true;
+        } else if included_pattern.is_none() {
+            included_pattern = Some(pattern.clone());
+        }
+    }
+
+    if unsupported_pattern {
+        return WorkspaceMembership::Unknown(format!(
+            "{source} contains a workspace pattern outside Sweep's conservative matcher; workspace membership is not proven."
+        ));
+    }
+
+    if excluded {
+        return WorkspaceMembership::Unknown(format!(
+            "Package is excluded by a supported {label} pattern; ancestor lockfile recovery is not proven for this package."
+        ));
+    }
+
+    if let Some(pattern) = included_pattern {
+        WorkspaceMembership::Proven { source, pattern }
+    } else {
+        WorkspaceMembership::Unknown(format!(
+            "Ancestor lockfile was found, but no supported {label} pattern proves that this package belongs to the install boundary."
+        ))
+    }
+}
+
+fn parse_package_json_workspace_patterns(path: &Path) -> Result<Option<Vec<String>>, String> {
+    let content = fs::read_to_string(path).map_err(|error| {
+        format!(
+            "Could not read install-boundary package.json while proving workspace membership: {error}"
+        )
+    })?;
+    let json: Value = serde_json::from_str(&content).map_err(|error| {
+        format!(
+            "Could not parse install-boundary package.json while proving workspace membership: {error}"
+        )
+    })?;
+
+    let Some(workspaces) = json.get("workspaces") else {
+        return Ok(None);
+    };
+
+    let values = match workspaces {
+        Value::Array(values) => values,
+        Value::Object(object) => match object.get("packages") {
+            Some(Value::Array(values)) => values,
+            _ => {
+                return Err(String::from(
+                    "The install-boundary package.json uses an unsupported workspaces shape; workspace membership is not proven.",
+                ));
+            }
+        },
+        _ => {
+            return Err(String::from(
+                "The install-boundary package.json uses an unsupported workspaces declaration; workspace membership is not proven.",
+            ));
+        }
+    };
+
+    let mut patterns = Vec::new();
+    for value in values {
+        let Some(pattern) = value.as_str() else {
+            return Err(String::from(
+                "The install-boundary package.json contains a non-string workspace pattern; workspace membership is not proven.",
+            ));
+        };
+        patterns.push(pattern.to_owned());
+    }
+
+    Ok(Some(patterns))
+}
+
+fn parse_pnpm_workspace_patterns(path: &Path) -> Result<Option<Vec<String>>, String> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+
+    let content = fs::read_to_string(path).map_err(|error| {
+        format!("Could not read pnpm-workspace.yaml while proving workspace membership: {error}")
+    })?;
+
+    let mut in_packages = false;
+    let mut packages_indent = 0usize;
+    let mut patterns = Vec::new();
+
+    for raw_line in content.lines() {
+        let trimmed = raw_line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        let indent = raw_line.len().saturating_sub(raw_line.trim_start().len());
+        if !in_packages {
+            if trimmed == "packages:" {
+                in_packages = true;
+                packages_indent = indent;
+            }
+            continue;
+        }
+
+        if indent <= packages_indent {
+            break;
+        }
+
+        let Some(value) = trimmed.strip_prefix("- ") else {
+            return Err(String::from(
+                "pnpm-workspace.yaml uses an unsupported packages declaration; workspace membership is not proven.",
+            ));
+        };
+
+        let value = unquote_workspace_scalar(value).ok_or_else(|| {
+            String::from(
+                "pnpm-workspace.yaml contains an unsupported workspace pattern; workspace membership is not proven.",
+            )
+        })?;
+        patterns.push(value);
+    }
+
+    if !in_packages {
+        return Ok(None);
+    }
+
+    Ok(Some(patterns))
+}
+
+fn unquote_workspace_scalar(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+
+    let unquoted = if value.len() >= 2
+        && ((value.starts_with('"') && value.ends_with('"'))
+            || (value.starts_with('\'') && value.ends_with('\'')))
+    {
+        &value[1..value.len() - 1]
+    } else {
+        value
+    };
+
+    if unquoted.is_empty()
+        || unquoted.chars().any(|character| {
+            character.is_whitespace()
+                || matches!(character, '[' | ']' | '{' | '}' | ',' | '&' | '#')
+        })
+    {
+        return None;
+    }
+
+    Some(unquoted.to_owned())
+}
+
+fn simple_workspace_pattern_matches(pattern: &str, relative: &str) -> Option<bool> {
+    if pattern.is_empty() || pattern.starts_with('/') || pattern.contains('\\') {
+        return None;
+    }
+
+    let pattern = pattern.trim_end_matches('/');
+    let relative = relative.trim_end_matches('/');
+    if pattern.is_empty() || relative.is_empty() {
+        return Some(false);
+    }
+
+    let pattern_segments: Vec<_> = pattern.split('/').collect();
+    if pattern_segments
+        .iter()
+        .any(|segment| !workspace_segment_supported(segment))
+    {
+        return None;
+    }
+
+    let relative_segments: Vec<_> = relative.split('/').collect();
+    Some(match_workspace_segments(
+        &pattern_segments,
+        &relative_segments,
+        0,
+        0,
+    ))
+}
+
+fn workspace_segment_supported(segment: &str) -> bool {
+    segment == "*"
+        || segment == "**"
+        || (!segment.is_empty()
+            && !segment.contains('*')
+            && !segment.contains('?')
+            && !segment.contains('[')
+            && !segment.contains(']')
+            && !segment.contains('{')
+            && !segment.contains('}'))
+}
+
+fn match_workspace_segments(
+    pattern: &[&str],
+    relative: &[&str],
+    pattern_index: usize,
+    relative_index: usize,
+) -> bool {
+    if pattern_index == pattern.len() {
+        return relative_index == relative.len();
+    }
+
+    match pattern[pattern_index] {
+        "**" => {
+            match_workspace_segments(pattern, relative, pattern_index + 1, relative_index)
+                || (relative_index < relative.len()
+                    && match_workspace_segments(
+                        pattern,
+                        relative,
+                        pattern_index,
+                        relative_index + 1,
+                    ))
+        }
+        "*" => {
+            relative_index < relative.len()
+                && match_workspace_segments(
+                    pattern,
+                    relative,
+                    pattern_index + 1,
+                    relative_index + 1,
+                )
+        }
+        literal => {
+            relative.get(relative_index) == Some(&literal)
+                && match_workspace_segments(
+                    pattern,
+                    relative,
+                    pattern_index + 1,
+                    relative_index + 1,
+                )
+        }
+    }
 }
 
 fn dependency_restore(parent: &Path) -> Option<DependencyRestore> {
@@ -250,6 +582,11 @@ mod tests {
             "lockfileVersion: '9.0'\n",
         )
         .unwrap();
+        fs::write(
+            root.path().join("pnpm-workspace.yaml"),
+            "packages:\n  - 'packages/*'\n",
+        )
+        .unwrap();
 
         let package = root.path().join("packages/ui");
         fs::create_dir_all(package.join("node_modules")).unwrap();
@@ -268,9 +605,139 @@ mod tests {
             Some("pnpm install --frozen-lockfile")
         );
         assert!(assessment.evidence.iter().any(|evidence| {
-            evidence.code == "dependency_lockfile"
-                && evidence.detail.contains("ancestor repository scope")
+            evidence.code == "workspace_membership"
+                && evidence.detail.contains("pnpm-workspace.yaml")
         }));
+    }
+
+    #[test]
+    fn inherited_lockfile_without_workspace_membership_requires_review() {
+        let root = tempdir().unwrap();
+        fs::create_dir(root.path().join(".git")).unwrap();
+        fs::write(
+            root.path().join("pnpm-lock.yaml"),
+            "lockfileVersion: '9.0'\n",
+        )
+        .unwrap();
+
+        let package = root.path().join("packages/ui");
+        fs::create_dir_all(package.join("node_modules")).unwrap();
+        fs::write(package.join("package.json"), "{}").unwrap();
+
+        let assessment = NodeProvider
+            .assess(
+                &package.join("node_modules"),
+                &ProviderContext { home: None },
+            )
+            .unwrap();
+
+        assert_eq!(assessment.decision, Decision::Review);
+        assert!(assessment.evidence.iter().any(|evidence| {
+            evidence.code == "workspace_membership"
+                && evidence.status == sweep_core::EvidenceStatus::Unknown
+        }));
+    }
+
+    #[test]
+    fn unrelated_workspace_pattern_does_not_prove_membership() {
+        let root = tempdir().unwrap();
+        fs::create_dir(root.path().join(".git")).unwrap();
+        fs::write(
+            root.path().join("pnpm-lock.yaml"),
+            "lockfileVersion: '9.0'\n",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("pnpm-workspace.yaml"),
+            "packages:\n  - 'apps/*'\n",
+        )
+        .unwrap();
+
+        let package = root.path().join("packages/ui");
+        fs::create_dir_all(package.join("node_modules")).unwrap();
+        fs::write(package.join("package.json"), "{}").unwrap();
+
+        let assessment = NodeProvider
+            .assess(
+                &package.join("node_modules"),
+                &ProviderContext { home: None },
+            )
+            .unwrap();
+
+        assert_eq!(assessment.decision, Decision::Review);
+    }
+
+    #[test]
+    fn package_json_workspaces_prove_inherited_npm_lockfile() {
+        let root = tempdir().unwrap();
+        fs::create_dir(root.path().join(".git")).unwrap();
+        fs::write(
+            root.path().join("package.json"),
+            r#"{"workspaces":["packages/*"]}"#,
+        )
+        .unwrap();
+        fs::write(root.path().join("package-lock.json"), "{}").unwrap();
+
+        let package = root.path().join("packages/ui");
+        fs::create_dir_all(package.join("node_modules")).unwrap();
+        fs::write(package.join("package.json"), "{}").unwrap();
+
+        let assessment = NodeProvider
+            .assess(
+                &package.join("node_modules"),
+                &ProviderContext { home: None },
+            )
+            .unwrap();
+
+        assert_eq!(assessment.decision, Decision::Safe);
+        assert_eq!(assessment.recovery.command.as_deref(), Some("npm ci"));
+        assert!(assessment.evidence.iter().any(|evidence| {
+            evidence.code == "workspace_membership"
+                && evidence.status == sweep_core::EvidenceStatus::Proven
+        }));
+    }
+
+    #[test]
+    fn matching_negative_workspace_pattern_requires_review() {
+        let membership = membership_from_patterns(
+            "packages/private",
+            vec![
+                String::from("packages/*"),
+                String::from("!packages/private"),
+            ],
+            "package.json workspaces",
+            "package-manager workspace",
+        );
+
+        assert!(matches!(membership, WorkspaceMembership::Unknown(_)));
+    }
+
+    #[test]
+    fn supported_workspace_matcher_is_conservative() {
+        assert_eq!(
+            simple_workspace_pattern_matches("packages/*", "packages/ui"),
+            Some(true)
+        );
+        assert_eq!(
+            simple_workspace_pattern_matches("packages/*", "packages/a/ui"),
+            Some(false)
+        );
+        assert_eq!(
+            simple_workspace_pattern_matches("packages/**", "packages/a/ui"),
+            Some(true)
+        );
+        assert_eq!(
+            simple_workspace_pattern_matches("packages/{a,b}", "packages/a"),
+            None
+        );
+
+        let membership = membership_from_patterns(
+            "packages/a",
+            vec![String::from("packages/*"), String::from("packages/{a,b}")],
+            "package.json workspaces",
+            "package-manager workspace",
+        );
+        assert!(matches!(membership, WorkspaceMembership::Unknown(_)));
     }
 
     #[test]

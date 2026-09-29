@@ -138,6 +138,11 @@ fn workspace_node_modules_inherits_repository_lockfile() {
         "lockfileVersion: '9.0'\n",
     )
     .unwrap();
+    fs::write(
+        repo.path().join("pnpm-workspace.yaml"),
+        "packages:\n  - 'packages/*'\n",
+    )
+    .unwrap();
     fs::write(repo.path().join(".gitignore"), "**/node_modules\n").unwrap();
 
     let package = repo.path().join("packages/ui");
@@ -157,6 +162,37 @@ fn workspace_node_modules_inherits_repository_lockfile() {
         candidate.recovery.command.as_deref(),
         Some("pnpm install --frozen-lockfile")
     );
+}
+
+#[test]
+fn inherited_node_lockfile_without_workspace_membership_requires_review() {
+    let repo = tempdir().unwrap();
+    init_git(repo.path());
+
+    fs::write(
+        repo.path().join("pnpm-lock.yaml"),
+        "lockfileVersion: '9.0'\n",
+    )
+    .unwrap();
+    fs::write(repo.path().join(".gitignore"), "**/node_modules\n").unwrap();
+
+    let package = repo.path().join("packages/ui");
+    fs::create_dir_all(package.join("node_modules/pkg")).unwrap();
+    fs::write(package.join("package.json"), "{}").unwrap();
+    fs::write(
+        package.join("node_modules/pkg/index.js"),
+        "module.exports = 1",
+    )
+    .unwrap();
+
+    let candidate = classify_path(&package.join("node_modules"));
+
+    assert_eq!(candidate.kind, CandidateKind::NodeModules);
+    assert_eq!(candidate.decision, Decision::Review);
+    assert!(candidate.evidence.iter().any(|evidence| {
+        evidence.code == "workspace_membership"
+            && evidence.status == sweep_core::EvidenceStatus::Unknown
+    }));
 }
 
 #[test]

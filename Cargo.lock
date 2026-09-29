@@ -1118,6 +1118,7 @@ dependencies = [
  "blake3",
  "ignore",
  "rayon",
+ "serde_json",
  "sweep-core",
  "tempfile",
 ]
