@@ -10,7 +10,7 @@ use ratatui::{
 use sweep_report::{DeltaDirection, Report, ReportCandidate, candidate_kind_name, decision_name};
 
 use crate::{
-    app::{App, CommandFamily, Drawer, InputMode, Overlay, PaletteAction, View},
+    app::{App, CommandFamily, Drawer, InputMode, Overlay, View},
     theme::Theme,
 };
 
@@ -1057,6 +1057,7 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
             "{marker} c                   open clean-plan preview"
         )),
         Line::from(format!("{marker} e / enter           inspect evidence")),
+        Line::from(format!("{marker} j/k inside inspect  scroll evidence")),
         Line::from(format!("{marker} f / S               filter / sort")),
         Line::from(""),
         section("BROWSE", theme),
@@ -1069,7 +1070,9 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
             "{marker} o                   reveal selected path in Finder"
         )),
         Line::from(format!("{marker} /                   live search")),
-        Line::from(format!("{marker} :                   action palette")),
+        Line::from(format!("{marker} :                   searchable action palette")),
+        Line::from(format!("{marker} y y/p/m/j/t         copy report/path")),
+        Line::from(format!("{marker} s y/m/j/t           save report")),
         Line::from(format!("{marker} option-left/right   scope history")),
         Line::from(format!(
             "{marker} R                   rescan / reload growth"
@@ -1286,6 +1289,7 @@ fn candidate_lines(
             }),
             theme,
         ),
+        evidence_summary(candidate, theme),
         Line::from(""),
         section("RECOVERY", theme),
         Line::from(candidate.recovery.detail.clone()),
@@ -1332,6 +1336,34 @@ fn candidate_lines(
     }
 
     lines
+}
+
+fn evidence_summary(candidate: &ReportCandidate, theme: Theme) -> Line<'static> {
+    let proven = candidate
+        .evidence
+        .iter()
+        .filter(|evidence| evidence.status == "proven")
+        .count();
+    let refuted = candidate
+        .evidence
+        .iter()
+        .filter(|evidence| evidence.status == "refuted")
+        .count();
+    let unknown = candidate.evidence.len().saturating_sub(proven + refuted);
+    let color = if refuted > 0 {
+        theme.protected()
+    } else if unknown > 0 {
+        theme.review()
+    } else {
+        theme.safe()
+    };
+
+    field(
+        "evidence",
+        &format!("{proven} proven · {unknown} unknown · {refuted} refuted"),
+        Style::default().fg(color),
+        theme,
+    )
 }
 
 fn section(label: &str, theme: Theme) -> Line<'static> {
