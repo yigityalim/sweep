@@ -37,7 +37,7 @@ pub struct SnapshotSummary {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SnapshotCandidate {
     pub relative_path: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing)]
     pub path: Option<String>,
     pub kind: CandidateKind,
     pub decision: Decision,
@@ -900,16 +900,18 @@ mod tests {
 
     #[test]
     fn legacy_schema_one_snapshot_with_absolute_path_still_validates() {
-        let mut snapshot = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
-        snapshot.schema_version = 1;
-        snapshot.candidates[0].path = Some(String::from("/workspace/a"));
+        let snapshot = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
+        let mut json = serde_json::to_value(&snapshot).unwrap();
+        json["schema_version"] = serde_json::json!(1);
+        json["candidates"][0]["path"] = serde_json::json!("/workspace/a");
 
-        let json = serde_json::to_string(&snapshot).unwrap();
-        let decoded: Snapshot = serde_json::from_str(&json).unwrap();
+        let decoded: Snapshot = serde_json::from_value(json).unwrap();
+        let reserialized = serde_json::to_value(&decoded).unwrap();
 
         assert_eq!(decoded.schema_version, 1);
         assert_eq!(decoded.candidates[0].path.as_deref(), Some("/workspace/a"));
         assert_eq!(decoded.validate(), Ok(()));
+        assert!(reserialized["candidates"][0].get("path").is_none());
     }
 
     #[test]
