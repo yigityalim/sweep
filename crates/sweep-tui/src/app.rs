@@ -1531,7 +1531,11 @@ fn clamp_table_selection(state: &mut TableState, len: usize) {
 
 #[cfg(test)]
 mod tests {
-    use sweep_report::{REPORT_SCHEMA_VERSION, ReportEvidence, ReportRecovery, ReportSummary};
+    use sweep_core::{CandidateKind, Decision};
+    use sweep_report::{
+        AddedCandidate, REPORT_SCHEMA_VERSION, ReportEvidence, ReportRecovery, ReportSummary,
+        SnapshotDiffSummary,
+    };
 
     use super::*;
 
@@ -1629,6 +1633,93 @@ mod tests {
             compare_candidates(&small, &large, SortKey::Size),
             Ordering::Greater
         );
+    }
+
+    #[test]
+    fn live_growth_maps_changed_added_and_unchanged_candidates() {
+        let diff = SnapshotDiff {
+            schema_version: 1,
+            root: String::from("/tmp"),
+            from_created_unix_seconds: 1,
+            to_created_unix_seconds: 2,
+            complete: true,
+            summary: SnapshotDiffSummary {
+                before_allocated_bytes_estimate: 100,
+                after_allocated_bytes_estimate: 180,
+                allocated_bytes_estimate_delta: ByteDelta {
+                    direction: DeltaDirection::Increased,
+                    bytes: 80,
+                },
+                added_count: 1,
+                removed_count: 0,
+                changed_count: 1,
+                moved_count: 0,
+            },
+            added: vec![AddedCandidate {
+                relative_path: String::from("new/target"),
+                kind: CandidateKind::RustTarget,
+                decision: Decision::Safe,
+                allocated_bytes_estimate: 50,
+            }],
+            removed: Vec::new(),
+            changed: vec![sweep_report::ChangedCandidate {
+                relative_path: String::from("changed/target"),
+                kind: CandidateKind::RustTarget,
+                before_decision: Decision::Safe,
+                after_decision: Decision::Safe,
+                before_allocated_bytes_estimate: 20,
+                after_allocated_bytes_estimate: 50,
+                allocated_bytes_estimate_delta: ByteDelta {
+                    direction: DeltaDirection::Increased,
+                    bytes: 30,
+                },
+                fingerprint_changed: true,
+                traversal_complete_changed: false,
+            }],
+            moved: Vec::new(),
+        };
+
+        assert_eq!(
+            growth_delta_for(&diff, "changed/target", "cargo-target"),
+            Some(ByteDelta {
+                direction: DeltaDirection::Increased,
+                bytes: 30,
+            })
+        );
+        assert_eq!(
+            growth_delta_for(&diff, "new/target", "cargo-target"),
+            Some(ByteDelta {
+                direction: DeltaDirection::Increased,
+                bytes: 50,
+            })
+        );
+        assert_eq!(
+            growth_delta_for(&diff, "same/target", "cargo-target"),
+            Some(ByteDelta {
+                direction: DeltaDirection::Unchanged,
+                bytes: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn growth_sort_orders_increase_before_unchanged_before_shrink() {
+        let increase = Some(ByteDelta {
+            direction: DeltaDirection::Increased,
+            bytes: 20,
+        });
+        let unchanged = Some(ByteDelta {
+            direction: DeltaDirection::Unchanged,
+            bytes: 0,
+        });
+        let decrease = Some(ByteDelta {
+            direction: DeltaDirection::Decreased,
+            bytes: 10,
+        });
+
+        assert_eq!(compare_growth(increase, unchanged), Ordering::Less);
+        assert_eq!(compare_growth(unchanged, decrease), Ordering::Less);
+        assert_eq!(compare_growth(decrease, None), Ordering::Less);
     }
 
     #[test]
