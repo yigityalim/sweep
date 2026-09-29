@@ -399,13 +399,25 @@ fn default_snapshot_path(snapshot: &Snapshot) -> io::Result<PathBuf> {
     let home = env::var_os("HOME")
         .map(PathBuf::from)
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+    let directory = home.join("Library/Application Support/Sweep/snapshots");
+    let stem = format!("sweep-snapshot-{}", snapshot.created_unix_seconds);
+    let direct = directory.join(format!("{stem}.sweep.json"));
 
-    Ok(home
-        .join("Library/Application Support/Sweep/snapshots")
-        .join(format!(
-            "sweep-snapshot-{}.sweep.json",
-            snapshot.created_unix_seconds
-        )))
+    if !direct.exists() {
+        return Ok(direct);
+    }
+
+    let mut suffix = 1_u64;
+    loop {
+        let candidate = directory.join(format!("{stem}-{suffix}.sweep.json"));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+
+        suffix = suffix.checked_add(1).ok_or_else(|| {
+            io::Error::other("snapshot filename suffix space exhausted")
+        })?;
+    }
 }
 
 fn run_plan(path: PathBuf, output: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
