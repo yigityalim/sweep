@@ -560,9 +560,7 @@ impl App {
                     self.start_scan()?;
                 }
             }
-            KeyCode::Char('/')
-                if matches!(self.view, View::Candidates | View::Browse) =>
-            {
+            KeyCode::Char('/') if matches!(self.view, View::Candidates | View::Browse) => {
                 self.query.clear();
                 self.input_mode = InputMode::Search;
             }
