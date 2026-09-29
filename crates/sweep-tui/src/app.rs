@@ -1973,8 +1973,33 @@ mod tests {
         assert_eq!(plan.requested_count, 3);
         assert_eq!(plan.included.len(), 1);
         assert_eq!(plan.excluded.len(), 2);
-        assert_eq!(plan.allocated_bytes_estimate, 10);
+        assert_eq!(plan.enabled_count(), 1);
+        assert_eq!(plan.allocated_bytes_estimate(), 10);
         assert_eq!(plan.included[0].decision, "safe");
+    }
+
+    #[test]
+    fn clean_preview_can_disable_and_restore_safe_candidates() {
+        let data = report(vec![
+            candidate("~/Developer/a/target", "safe", 10),
+            candidate("~/Developer/b/target", "safe", 20),
+        ]);
+        let selected = data
+            .candidates
+            .iter()
+            .map(|candidate| candidate.path.clone())
+            .collect();
+
+        let mut plan = build_clean_plan(&data, &selected, None).unwrap();
+        let first = plan.included[0].path.clone();
+
+        plan.enabled_paths.remove(&first);
+        assert_eq!(plan.enabled_count(), 1);
+        assert_eq!(plan.allocated_bytes_estimate(), 20);
+
+        plan.enabled_paths.insert(first);
+        assert_eq!(plan.enabled_count(), 2);
+        assert_eq!(plan.allocated_bytes_estimate(), 30);
     }
 
     #[test]
