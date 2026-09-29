@@ -70,9 +70,9 @@ General-purpose cleaners frequently mix this with application state, user conten
 sw
 ```
 
-Running `sw` without a subcommand opens the read-only interactive dashboard. It scans `~/Developer` when that directory exists and otherwise uses the current directory. The TUI provides keyboard navigation, live search, decision filters, sort modes, evidence inspection, background rescans, responsive layouts, `NO_COLOR` support, and an ASCII mode through `SWEEP_ASCII=1`.
+Running `sw` without a subcommand opens the read-only interactive dashboard. It scans `~/Developer` when that directory exists and otherwise uses the current directory. The TUI provides keyboard navigation, live search, decision filters, sort modes, evidence inspection, read-only file browsing, snapshot growth, scope navigation, Finder reveal, report export, cleanup-plan previews, background rescans, responsive layouts, `NO_COLOR` support, and an ASCII mode through `SWEEP_ASCII=1`.
 
-The TUI is a report surface only. Selection and animation do not authorize mutation.
+The TUI is a report surface only. Selection and animation do not authorize mutation. Cleanup actions currently stop at an explicit preview receipt; no file deletion is enabled.
 
 ### Scan
 
