@@ -24,7 +24,7 @@ use sweep_scan::{ScanOptions, classify_path, scan, scan_with_diagnostics};
 )]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -158,26 +158,33 @@ fn main() -> ExitCode {
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
-        Commands::Scan { path, json } => run_scan(path, json),
-        Commands::Explain { path, json } => run_explain(path, json),
-        Commands::Report {
+        None => run_tui(),
+        Some(Commands::Scan { path, json }) => run_scan(path, json),
+        Some(Commands::Explain { path, json }) => run_explain(path, json),
+        Some(Commands::Report {
             path,
             format,
             output,
             save,
             copy,
             redact_home,
-        } => run_report(path, format.into(), output, save, copy, redact_home),
-        Commands::Snapshot { path, output } => run_snapshot(path, output),
-        Commands::Diff {
+        }) => run_report(path, format.into(), output, save, copy, redact_home),
+        Some(Commands::Snapshot { path, output }) => run_snapshot(path, output),
+        Some(Commands::Diff {
             before,
             after,
             format,
             output,
-        } => run_diff(before, after, format.into(), output),
-        Commands::Plan { path, output } => run_plan(path, output),
-        Commands::Doctor { json } => run_doctor(json),
+        }) => run_diff(before, after, format.into(), output),
+        Some(Commands::Plan { path, output }) => run_plan(path, output),
+        Some(Commands::Doctor { json }) => run_doctor(json),
     }
+}
+
+fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
+    let root = sweep_tui::default_root()?;
+    sweep_tui::run(root)?;
+    Ok(())
 }
 
 fn run_scan(path: PathBuf, json: bool) -> Result<(), Box<dyn std::error::Error>> {
