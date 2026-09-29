@@ -16,7 +16,8 @@ use crate::{
 
 const MIN_WIDTH: u16 = 74;
 const MIN_HEIGHT: u16 = 18;
-const INSPECTOR_WIDTH: u16 = 42;
+const INSPECTOR_WIDTH: u16 = 48;
+const INSPECTOR_BREAKPOINT: u16 = 124;
 
 pub(crate) fn render(frame: &mut Frame<'_>, app: &mut App, frame_delta: Duration) {
     let area = frame.area();
@@ -67,7 +68,7 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
     } else if app.discovery_error_count > 0 {
         format!("READY  PARTIAL ({})", app.discovery_error_count)
     } else {
-        String::from("READY  VERIFIED VIEW")
+        String::from("READY  COMPLETE")
     };
 
     let title = Line::from(vec![
@@ -281,7 +282,7 @@ fn render_loading(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
 }
 
 fn render_body(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) {
-    if area.width >= 112 {
+    if area.width >= INSPECTOR_BREAKPOINT {
         let body = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(60), Constraint::Length(INSPECTOR_WIDTH)])
@@ -320,10 +321,21 @@ fn render_table(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme) 
         )
         .bottom_margin(1);
 
+    let visible_allocated_bytes = indices
+        .iter()
+        .map(|index| report.candidates[*index].allocated_bytes_estimate)
+        .sum::<u64>();
+    let visible_allocated = format_bytes(visible_allocated_bytes);
+
     let title = if app.query.is_empty() {
-        format!(" candidates  {} ", indices.len())
+        format!(" candidates  {} · {} ", indices.len(), visible_allocated)
     } else {
-        format!(" candidates  {}  /{} ", indices.len(), app.query)
+        format!(
+            " candidates  {} · {}  /{} ",
+            indices.len(),
+            visible_allocated,
+            app.query
+        )
     };
 
     let table = Table::new(
@@ -410,16 +422,16 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
             ),
         ])
     } else {
-        Line::from(vec![
-            key("q", "quit", theme),
-            key("j/k", "navigate", theme),
-            key("/", "search", theme),
-            key("f", "filter", theme),
-            key("S", "sort", theme),
-            key("e", "inspect", theme),
-            key("R", "rescan", theme),
-            key("?", "help", theme),
-        ])
+        let mut spans = Vec::new();
+        spans.extend(key("q", "quit", theme));
+        spans.extend(key("j/k", "navigate", theme));
+        spans.extend(key("/", "search", theme));
+        spans.extend(key("f", "filter", theme));
+        spans.extend(key("S", "sort", theme));
+        spans.extend(key("e", "inspect", theme));
+        spans.extend(key("R", "rescan", theme));
+        spans.extend(key("?", "help", theme));
+        Line::from(spans)
     };
 
     frame.render_widget(
@@ -432,11 +444,19 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
     );
 }
 
-fn key<'a>(key: &'a str, label: &'a str, theme: Theme) -> Span<'a> {
-    Span::styled(
-        format!(" {key} {label}  "),
-        Style::default().fg(theme.muted()),
-    )
+fn key(key: &str, label: &str, theme: Theme) -> [Span<'static>; 2] {
+    [
+        Span::styled(
+            format!(" {key}"),
+            Style::default()
+                .fg(theme.accent())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" {label}  "),
+            Style::default().fg(theme.muted()),
+        ),
+    ]
 }
 
 fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
@@ -577,7 +597,7 @@ fn candidate_lines(
         Line::from(Span::styled(
             "RECOVERY",
             Style::default()
-                .fg(theme.muted())
+                .fg(theme.accent())
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(candidate.recovery.detail.clone()),
@@ -594,7 +614,7 @@ fn candidate_lines(
     lines.push(Line::from(Span::styled(
         "EVIDENCE",
         Style::default()
-            .fg(theme.muted())
+            .fg(theme.accent())
             .add_modifier(Modifier::BOLD),
     )));
 
