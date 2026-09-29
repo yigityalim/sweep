@@ -193,8 +193,10 @@ The TUI adds these UI-specific constraints:
 
 The preview release deliberately exercises the future workflow without crossing the mutation boundary:
 
-- candidate marks are presentation state only;
+- candidate marks, range selection, and selected-only filtering are presentation state only;
+- bulk selection may mark only candidates already visible under the active filters;
 - clean preview includes only `safe` candidates and lists review/protected candidates as excluded;
+- the clean-preview drawer may disable or re-enable already-eligible `safe` items, but it cannot promote review/protected items;
 - confirming a clean preview renders a preview receipt and performs no filesystem mutation;
 - Browse never follows directory symlinks and never offers arbitrary delete;
 - Finder reveal is an external navigation action only;
