@@ -888,11 +888,7 @@ fn clean_plan_lines(
         let enabled = plan.is_enabled(candidate);
         let current = index == plan.cursor;
         let marker = if enabled { "[x]" } else { "[ ]" };
-        let prefix = if current {
-            ">"
-        } else {
-            " "
-        };
+        let prefix = if current { ">" } else { " " };
         let style = if current {
             theme.selected()
         } else if enabled {
@@ -981,10 +977,7 @@ fn preview_receipt_lines(plan: &crate::app::CleanPlan, theme: Theme) -> Vec<Line
         ),
         field(
             "would target",
-            &format!(
-                "{} estimate",
-                format_bytes(plan.allocated_bytes_estimate())
-            ),
+            &format!("{} estimate", format_bytes(plan.allocated_bytes_estimate())),
             Style::default().fg(theme.bright_text()),
             theme,
         ),
@@ -1139,7 +1132,9 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
         Line::from(format!("{marker} j / k / arrows      move selection")),
         Line::from(format!("{marker} space               mark candidate")),
         Line::from(format!("{marker} v                   range selection mode")),
-        Line::from(format!("{marker} a                   select all visible safe")),
+        Line::from(format!(
+            "{marker} a                   select all visible safe"
+        )),
         Line::from(format!("{marker} u                   clear selection")),
         Line::from(format!("{marker} x                   selected-only view")),
         Line::from(format!(
