@@ -22,6 +22,7 @@ pub(crate) struct GrowthData {
     pub(crate) diff: Option<SnapshotDiff>,
     pub(crate) snapshot_count: usize,
     pub(crate) invalid_snapshot_count: usize,
+    pub(crate) live_comparison: bool,
     pub(crate) message: String,
 }
 
@@ -140,6 +141,7 @@ pub(crate) fn load_growth(root: &Path) -> io::Result<GrowthData> {
             diff: None,
             snapshot_count: 0,
             invalid_snapshot_count: 0,
+            live_comparison: false,
             message: String::from("HOME is not set; snapshots cannot be discovered"),
         });
     };
@@ -155,15 +157,104 @@ pub(crate) fn load_growth(root: &Path) -> io::Result<GrowthData> {
             diff: None,
             snapshot_count: 0,
             invalid_snapshot_count: 0,
+            live_comparison: false,
             message: String::from("No snapshots yet. Run sw snapshot for this scope twice."),
         });
     }
 
+    let (snapshots, invalid_snapshot_count) = load_valid_snapshots(&directory, root)?;
+    let snapshot_count = snapshots.len();
+
+    if snapshot_count < 2 {
+        let suffix = invalid_suffix(invalid_snapshot_count);
+        return Ok(GrowthData {
+            diff: None,
+            snapshot_count,
+            invalid_snapshot_count,
+            live_comparison: false,
+            message: format!(
+                "Need two valid snapshots for this scope; found {snapshot_count}.{suffix}"
+            ),
+        });
+    }
+
+    let before = &snapshots[snapshot_count - 2];
+    let after = &snapshots[snapshot_count - 1];
+    let diff = before.diff(after).map_err(io::Error::other)?;
+    let suffix = invalid_suffix(invalid_snapshot_count);
+
+    Ok(GrowthData {
+        diff: Some(diff),
+        snapshot_count,
+        invalid_snapshot_count,
+        live_comparison: false,
+        message: format!("Comparing the latest two of {snapshot_count} snapshots.{suffix}"),
+    })
+}
+
+pub(crate) fn load_growth_against_current(
+    root: &Path,
+    current: &Snapshot,
+) -> io::Result<GrowthData> {
+    let Some(home) = env::var_os("HOME").map(PathBuf::from) else {
+        return Ok(GrowthData {
+            diff: None,
+            snapshot_count: 0,
+            invalid_snapshot_count: 0,
+            live_comparison: true,
+            message: String::from("HOME is not set; snapshots cannot be discovered"),
+        });
+    };
+
+    let directory = home
+        .join("Library")
+        .join("Application Support")
+        .join("Sweep")
+        .join("snapshots");
+
+    if !directory.is_dir() {
+        return Ok(GrowthData {
+            diff: None,
+            snapshot_count: 0,
+            invalid_snapshot_count: 0,
+            live_comparison: true,
+            message: String::from("No snapshot baseline yet. Run sw snapshot for this scope."),
+        });
+    }
+
+    let (snapshots, invalid_snapshot_count) = load_valid_snapshots(&directory, root)?;
+    let snapshot_count = snapshots.len();
+    let Some(before) = snapshots.last() else {
+        let suffix = invalid_suffix(invalid_snapshot_count);
+        return Ok(GrowthData {
+            diff: None,
+            snapshot_count,
+            invalid_snapshot_count,
+            live_comparison: true,
+            message: format!("No valid snapshot baseline for this scope.{suffix}"),
+        });
+    };
+
+    let diff = before.diff(current).map_err(io::Error::other)?;
+    let suffix = invalid_suffix(invalid_snapshot_count);
+
+    Ok(GrowthData {
+        diff: Some(diff),
+        snapshot_count,
+        invalid_snapshot_count,
+        live_comparison: true,
+        message: format!(
+            "Comparing live scan against the latest of {snapshot_count} snapshots.{suffix}"
+        ),
+    })
+}
+
+fn load_valid_snapshots(directory: &Path, root: &Path) -> io::Result<(Vec<Snapshot>, usize)> {
     let expected_root = root.to_string_lossy();
     let mut snapshots = Vec::new();
     let mut invalid_snapshot_count = 0usize;
 
-    for entry in fs::read_dir(&directory)? {
+    for entry in fs::read_dir(directory)? {
         let entry = entry?;
         let file_name = entry.file_name();
         let file_name = file_name.to_string_lossy();
@@ -198,31 +289,7 @@ pub(crate) fn load_growth(root: &Path) -> io::Result<GrowthData> {
     }
 
     snapshots.sort_by_key(|snapshot| snapshot.created_unix_seconds);
-    let snapshot_count = snapshots.len();
-
-    if snapshot_count < 2 {
-        let suffix = invalid_suffix(invalid_snapshot_count);
-        return Ok(GrowthData {
-            diff: None,
-            snapshot_count,
-            invalid_snapshot_count,
-            message: format!(
-                "Need two valid snapshots for this scope; found {snapshot_count}.{suffix}"
-            ),
-        });
-    }
-
-    let before = &snapshots[snapshot_count - 2];
-    let after = &snapshots[snapshot_count - 1];
-    let diff = before.diff(after).map_err(io::Error::other)?;
-    let suffix = invalid_suffix(invalid_snapshot_count);
-
-    Ok(GrowthData {
-        diff: Some(diff),
-        snapshot_count,
-        invalid_snapshot_count,
-        message: format!("Comparing the latest two of {snapshot_count} snapshots.{suffix}"),
-    })
+    Ok((snapshots, invalid_snapshot_count))
 }
 
 pub(crate) fn history_directory() -> Option<PathBuf> {
