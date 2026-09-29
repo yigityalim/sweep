@@ -393,6 +393,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn snapshot_compound_extension_keeps_numeric_suffix_before_extension() {
+        let base = env::temp_dir().join(format!(
+            "sweep-snapshot-path-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&base).unwrap();
+        let first = base.join("sweep-snapshot-42.sweep.json");
+        fs::write(&first, b"existing").unwrap();
+
+        assert_eq!(
+            unique_path(&base, "sweep-snapshot-42", "sweep.json"),
+            base.join("sweep-snapshot-42-1.sweep.json")
+        );
+
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
     fn unique_path_does_not_clobber_existing_file() {
         let base = env::temp_dir().join(format!(
             "sweep-preview-test-{}-{}",
