@@ -79,7 +79,10 @@ fn node_modules(parent: &Path) -> ProviderAssessment {
         if restore.root == parent {
             assessment.prove(
                 "dependency_lockfile",
-                format!("Supported dependency lockfile present: {}.", restore.lockfile),
+                format!(
+                    "Supported dependency lockfile present: {}.",
+                    restore.lockfile
+                ),
             );
         } else {
             assessment.prove(
@@ -242,7 +245,11 @@ mod tests {
     fn workspace_package_inherits_repository_lockfile() {
         let root = tempdir().unwrap();
         fs::create_dir(root.path().join(".git")).unwrap();
-        fs::write(root.path().join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n").unwrap();
+        fs::write(
+            root.path().join("pnpm-lock.yaml"),
+            "lockfileVersion: '9.0'\n",
+        )
+        .unwrap();
 
         let package = root.path().join("packages/ui");
         fs::create_dir_all(package.join("node_modules")).unwrap();
@@ -269,7 +276,11 @@ mod tests {
     #[test]
     fn lockfile_search_does_not_escape_repository_boundary() {
         let root = tempdir().unwrap();
-        fs::write(root.path().join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n").unwrap();
+        fs::write(
+            root.path().join("pnpm-lock.yaml"),
+            "lockfileVersion: '9.0'\n",
+        )
+        .unwrap();
 
         let repository = root.path().join("repo");
         fs::create_dir_all(repository.join(".git")).unwrap();
