@@ -37,6 +37,7 @@ Do not broaden Sweep into a generic macOS cleaner, app uninstaller, system optim
 25. TUI Browse is read-only; it must never expose arbitrary filesystem deletion.
 26. Finder reveal, report export, clipboard, navigation, and action-palette commands never alter classification or deletion authority.
 27. TUI range selection, bulk selection, selected-only views, and clean-preview item toggles are presentation state only; they cannot promote review/protected candidates into an eligible plan.
+28. Preview receipts may exist only in memory for the current TUI session. They must never be persisted as cleanup history and must never claim reclaimed bytes or successful mutation.
 
 ## Rust rules
 
