@@ -283,9 +283,7 @@ fn copy_to_clipboard(content: &str) -> io::Result<()> {
     if status.success() {
         Ok(())
     } else {
-        Err(io::Error::other(format!(
-            "pbcopy exited with {status}"
-        )))
+        Err(io::Error::other(format!("pbcopy exited with {status}")))
     }
 }
 
