@@ -1058,19 +1058,23 @@ impl App {
     }
 
     fn select_candidate_first(&mut self) {
-        select_first(&mut self.table_state, self.visible_indices().len());
+        let len = self.visible_indices().len();
+        select_first(&mut self.table_state, len);
     }
 
     fn select_candidate_last(&mut self) {
-        select_last(&mut self.table_state, self.visible_indices().len());
+        let len = self.visible_indices().len();
+        select_last(&mut self.table_state, len);
     }
 
     fn select_browse_first(&mut self) {
-        select_first(&mut self.browse_state, self.visible_browse_indices().len());
+        let len = self.visible_browse_indices().len();
+        select_first(&mut self.browse_state, len);
     }
 
     fn select_browse_last(&mut self) {
-        select_last(&mut self.browse_state, self.visible_browse_indices().len());
+        let len = self.visible_browse_indices().len();
+        select_last(&mut self.browse_state, len);
     }
 
     fn clamp_active_selection(&mut self) {
@@ -1082,11 +1086,13 @@ impl App {
     }
 
     fn clamp_candidate_selection(&mut self) {
-        clamp_table_selection(&mut self.table_state, self.visible_indices().len());
+        let len = self.visible_indices().len();
+        clamp_table_selection(&mut self.table_state, len);
     }
 
     fn clamp_browse_selection(&mut self) {
-        clamp_table_selection(&mut self.browse_state, self.visible_browse_indices().len());
+        let len = self.visible_browse_indices().len();
+        clamp_table_selection(&mut self.browse_state, len);
     }
 }
 
