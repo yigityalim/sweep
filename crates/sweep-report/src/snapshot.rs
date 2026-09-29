@@ -181,8 +181,10 @@ impl Snapshot {
             .map(|candidate| SnapshotCandidate::from_candidate(root, candidate))
             .collect();
 
-        let complete =
-            discovery_complete && candidates.iter().all(|candidate| candidate.traversal_complete);
+        let complete = discovery_complete
+            && candidates
+                .iter()
+                .all(|candidate| candidate.traversal_complete);
         let summary = SnapshotSummary::from_candidates(&candidates);
 
         Self {
@@ -274,16 +276,23 @@ impl SnapshotCandidate {
             allocated_bytes_estimate: candidate.allocated_bytes_estimate,
             traversal_complete: candidate.traversal_complete,
             subtree_metadata_fingerprint: candidate.subtree_metadata_fingerprint.clone(),
-            identity: candidate.identity.as_ref().map(|identity| SnapshotIdentity {
-                device: identity.device,
-                inode: identity.inode,
-            }),
+            identity: candidate
+                .identity
+                .as_ref()
+                .map(|identity| SnapshotIdentity {
+                    device: identity.device,
+                    inode: identity.inode,
+                }),
             recovery_kind: candidate.recovery.kind.clone(),
         }
     }
 
     fn exact_key(&self) -> String {
-        format!("{}\u{0}{}", candidate_kind_name(self.kind), self.relative_path)
+        format!(
+            "{}\u{0}{}",
+            candidate_kind_name(self.kind),
+            self.relative_path
+        )
     }
 
     fn materially_differs(&self, other: &Self) -> bool {
@@ -335,13 +344,14 @@ fn diff_snapshots(before: &Snapshot, after: &Snapshot) -> SnapshotDiff {
     let mut moved = Vec::new();
 
     for (before_index, before_candidate) in before.candidates.iter().enumerate() {
-        let Some((after_index, after_candidate)) = after
-            .candidates
-            .iter()
-            .enumerate()
-            .find(|(index, candidate)| {
-                !after_matched[*index] && candidate.exact_key() == before_candidate.exact_key()
-            })
+        let Some((after_index, after_candidate)) =
+            after
+                .candidates
+                .iter()
+                .enumerate()
+                .find(|(index, candidate)| {
+                    !after_matched[*index] && candidate.exact_key() == before_candidate.exact_key()
+                })
         else {
             continue;
         };
@@ -825,12 +835,7 @@ mod tests {
 
     #[test]
     fn diff_tracks_growth_and_additions() {
-        let before = snapshot(&[candidate(
-            "/workspace/a",
-            Decision::Safe,
-            10,
-            1,
-        )]);
+        let before = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
         let after = snapshot(&[
             candidate("/workspace/a", Decision::Safe, 25, 1),
             candidate("/workspace/b", Decision::Review, 5, 2),
@@ -852,18 +857,8 @@ mod tests {
 
     #[test]
     fn diff_detects_move_by_filesystem_identity() {
-        let before = snapshot(&[candidate(
-            "/workspace/old/target",
-            Decision::Safe,
-            10,
-            7,
-        )]);
-        let after = snapshot(&[candidate(
-            "/workspace/new/target",
-            Decision::Safe,
-            10,
-            7,
-        )]);
+        let before = snapshot(&[candidate("/workspace/old/target", Decision::Safe, 10, 7)]);
+        let after = snapshot(&[candidate("/workspace/new/target", Decision::Safe, 10, 7)]);
 
         let diff = before.diff(&after).unwrap();
 
@@ -897,20 +892,10 @@ mod tests {
 
     #[test]
     fn incomplete_discovery_propagates_to_diff() {
-        let mut before = snapshot(&[candidate(
-            "/workspace/a",
-            Decision::Safe,
-            10,
-            1,
-        )]);
+        let mut before = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
         before.complete = false;
         before.discovery_error_count = 1;
-        let after = snapshot(&[candidate(
-            "/workspace/a",
-            Decision::Safe,
-            10,
-            1,
-        )]);
+        let after = snapshot(&[candidate("/workspace/a", Decision::Safe, 10, 1)]);
 
         let diff = before.diff(&after).unwrap();
 
@@ -920,12 +905,7 @@ mod tests {
 
     #[test]
     fn identity_matching_is_not_used_when_ambiguous() {
-        let before = snapshot(&[candidate(
-            "/workspace/old",
-            Decision::Safe,
-            10,
-            7,
-        )]);
+        let before = snapshot(&[candidate("/workspace/old", Decision::Safe, 10, 7)]);
         let after = snapshot(&[
             candidate("/workspace/new-a", Decision::Safe, 10, 7),
             candidate("/workspace/new-b", Decision::Safe, 10, 7),
