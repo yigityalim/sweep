@@ -7,9 +7,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Cell, Clear, Paragraph, Row, Table, Wrap},
 };
-use sweep_report::{
-    DeltaDirection, Report, ReportCandidate, candidate_kind_name, decision_name,
-};
+use sweep_report::{DeltaDirection, Report, ReportCandidate, candidate_kind_name, decision_name};
 
 use crate::{
     app::{App, Drawer, InputMode, Overlay, PaletteAction, View},
@@ -91,7 +89,10 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
                 .fg(theme.bright_text())
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled("developer storage graph", Style::default().fg(theme.muted())),
+        Span::styled(
+            "developer storage graph",
+            Style::default().fg(theme.muted()),
+        ),
     ]);
 
     let right = Span::styled(status, Style::default().fg(theme.muted()));
@@ -482,7 +483,11 @@ fn render_browser(frame: &mut Frame<'_>, area: Rect, app: &mut App, theme: Theme
         .bottom_margin(1);
 
     let title = if app.query.is_empty() {
-        format!(" browse  {} · {} entries ", app.browse_path_label(), indices.len())
+        format!(
+            " browse  {} · {} entries ",
+            app.browse_path_label(),
+            indices.len()
+        )
     } else {
         format!(
             " browse  {} · {} entries  /{} ",
@@ -603,8 +608,11 @@ fn render_growth(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
     for candidate in &diff.added {
         rows.push(
             Row::new(vec![
-                Cell::from(format!("+{}", format_bytes(candidate.allocated_bytes_estimate)))
-                    .style(Style::default().fg(theme.review())),
+                Cell::from(format!(
+                    "+{}",
+                    format_bytes(candidate.allocated_bytes_estimate)
+                ))
+                .style(Style::default().fg(theme.review())),
                 Cell::from(decision_name(candidate.decision)),
                 Cell::from(candidate_kind_name(candidate.kind)),
                 Cell::from(candidate.relative_path.clone()),
@@ -616,8 +624,11 @@ fn render_growth(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
     for candidate in &diff.removed {
         rows.push(
             Row::new(vec![
-                Cell::from(format!("-{}", format_bytes(candidate.allocated_bytes_estimate)))
-                    .style(Style::default().fg(theme.safe())),
+                Cell::from(format!(
+                    "-{}",
+                    format_bytes(candidate.allocated_bytes_estimate)
+                ))
+                .style(Style::default().fg(theme.safe())),
                 Cell::from(decision_name(candidate.decision)),
                 Cell::from(candidate_kind_name(candidate.kind)),
                 Cell::from(candidate.relative_path.clone()),
@@ -751,10 +762,7 @@ fn render_drawer(frame: &mut Frame<'_>, area: Rect, drawer: &Drawer, theme: Them
             " clean preview ",
             clean_plan_lines(plan, theme, area.height.saturating_sub(2) as usize),
         ),
-        Drawer::PreviewReceipt(plan) => (
-            " preview receipt ",
-            preview_receipt_lines(plan, theme),
-        ),
+        Drawer::PreviewReceipt(plan) => (" preview receipt ", preview_receipt_lines(plan, theme)),
     };
 
     frame.render_widget(
@@ -830,7 +838,10 @@ fn clean_plan_lines(
                 format!("{:>9}  ", format_bytes(candidate.allocated_bytes_estimate)),
                 Style::default().fg(theme.text()),
             ),
-            Span::styled(compact(&candidate.path, 34), Style::default().fg(theme.muted())),
+            Span::styled(
+                compact(&candidate.path, 34),
+                Style::default().fg(theme.muted()),
+            ),
         ]));
     }
 
@@ -850,7 +861,10 @@ fn clean_plan_lines(
                     format!("{:<10} ", candidate.decision),
                     theme.decision(&candidate.decision),
                 ),
-                Span::styled(compact(&candidate.path, 34), Style::default().fg(theme.muted())),
+                Span::styled(
+                    compact(&candidate.path, 34),
+                    Style::default().fg(theme.muted()),
+                ),
             ]));
         }
     }
@@ -865,10 +879,7 @@ fn clean_plan_lines(
     lines
 }
 
-fn preview_receipt_lines(
-    plan: &crate::app::CleanPlan,
-    theme: Theme,
-) -> Vec<Line<'static>> {
+fn preview_receipt_lines(plan: &crate::app::CleanPlan, theme: Theme) -> Vec<Line<'static>> {
     vec![
         Line::from(Span::styled(
             "NO FILES CHANGED",
@@ -1006,13 +1017,17 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
     let marker = if app.ascii { ">" } else { "•" };
     let lines = vec![
         section("VIEWS", theme),
-        Line::from(format!("{marker} 1 candidates   2 browse   3 growth   4 history")),
+        Line::from(format!(
+            "{marker} 1 candidates   2 browse   3 growth   4 history"
+        )),
         Line::from(format!("{marker} tab                 next view")),
         Line::from(""),
         section("CANDIDATES", theme),
         Line::from(format!("{marker} j / k / arrows      move selection")),
         Line::from(format!("{marker} space               mark candidate")),
-        Line::from(format!("{marker} c                   open clean-plan preview")),
+        Line::from(format!(
+            "{marker} c                   open clean-plan preview"
+        )),
         Line::from(format!("{marker} e / enter           inspect evidence")),
         Line::from(format!("{marker} f / S               filter / sort")),
         Line::from(""),
@@ -1022,11 +1037,15 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
         Line::from(format!("{marker} symlink directories are never traversed")),
         Line::from(""),
         section("GLOBAL", theme),
-        Line::from(format!("{marker} o                   reveal selected path in Finder")),
+        Line::from(format!(
+            "{marker} o                   reveal selected path in Finder"
+        )),
         Line::from(format!("{marker} /                   live search")),
         Line::from(format!("{marker} :                   action palette")),
         Line::from(format!("{marker} option-left/right   scope history")),
-        Line::from(format!("{marker} R                   rescan / reload growth")),
+        Line::from(format!(
+            "{marker} R                   rescan / reload growth"
+        )),
         Line::from(""),
         section("SAFETY", theme),
         Line::from("Clean is preview-only. It cannot mutate files or write cleanup history."),
