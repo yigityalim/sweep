@@ -698,6 +698,21 @@ mod tests {
     }
 
     #[test]
+    fn matching_negative_workspace_pattern_requires_review() {
+        let membership = membership_from_patterns(
+            "packages/private",
+            vec![
+                String::from("packages/*"),
+                String::from("!packages/private"),
+            ],
+            "package.json workspaces",
+            "package-manager workspace",
+        );
+
+        assert!(matches!(membership, WorkspaceMembership::Unknown(_)));
+    }
+
+    #[test]
     fn supported_workspace_matcher_is_conservative() {
         assert_eq!(
             simple_workspace_pattern_matches("packages/*", "packages/ui"),
