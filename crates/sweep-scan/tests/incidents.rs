@@ -133,7 +133,11 @@ fn workspace_node_modules_inherits_repository_lockfile() {
     let repo = tempdir().unwrap();
     init_git(repo.path());
 
-    fs::write(repo.path().join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n").unwrap();
+    fs::write(
+        repo.path().join("pnpm-lock.yaml"),
+        "lockfileVersion: '9.0'\n",
+    )
+    .unwrap();
 
     let package = repo.path().join("packages/ui");
     fs::create_dir_all(package.join("node_modules/pkg")).unwrap();
