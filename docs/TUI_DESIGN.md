@@ -202,6 +202,7 @@ The preview release deliberately exercises the future workflow without crossing 
 - Finder reveal is an external navigation action only;
 - scope changes discard old live authority and start a new scan;
 - Growth consumes validated read-only snapshots for the exact scope;
+- the Growth view may persist the current live snapshot as a baseline, using non-clobbering snapshot filenames;
 - after a live scan, the latest persisted snapshot becomes a read-only baseline for per-candidate live deltas;
 - the candidate table and inspector may display those deltas, but growth never changes cleanup eligibility;
 - preview History may show volatile current-session receipts so the interaction can be tested, but those receipts are never persisted and always state that no files changed;

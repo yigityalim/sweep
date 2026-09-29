@@ -24,7 +24,7 @@ use crate::{
     display_path,
     preview::{
         BrowseEntry, GrowthData, copy_report, copy_to_clipboard, history_directory, list_directory,
-        load_growth, load_growth_against_current, reveal_in_finder, save_report,
+        load_growth, load_growth_against_current, reveal_in_finder, save_report, save_snapshot,
     },
     theme::Theme,
     ui,
@@ -169,12 +169,13 @@ pub(crate) enum PaletteAction {
     CopyToml,
     OpenBrowse,
     OpenGrowth,
+    SaveSnapshotBaseline,
     OpenHistory,
     Rescan,
 }
 
 impl PaletteAction {
-    pub(crate) const ALL: [Self; 19] = [
+    pub(crate) const ALL: [Self; 20] = [
         Self::PreviewClean,
         Self::SelectAllVisibleSafe,
         Self::ClearSelection,
@@ -192,6 +193,7 @@ impl PaletteAction {
         Self::CopyToml,
         Self::OpenBrowse,
         Self::OpenGrowth,
+        Self::SaveSnapshotBaseline,
         Self::OpenHistory,
         Self::Rescan,
     ];
@@ -215,6 +217,7 @@ impl PaletteAction {
             Self::CopyToml => "Copy TOML report",
             Self::OpenBrowse => "Open file browser",
             Self::OpenGrowth => "Open snapshot growth",
+            Self::SaveSnapshotBaseline => "Save current scan as snapshot baseline",
             Self::OpenHistory => "Open cleanup history",
             Self::Rescan => "Rescan current scope",
         }
@@ -732,6 +735,7 @@ impl App {
             KeyCode::Tab => self.set_view(self.view.next()),
             KeyCode::Char('o') => self.reveal_selected(),
             KeyCode::Char('c') if self.view == View::Candidates => self.open_clean_preview(),
+            KeyCode::Char('b') if self.view == View::Growth => self.save_snapshot_baseline(),
             KeyCode::Char('R') => {
                 if self.view == View::Growth {
                     self.reload_growth();
@@ -1137,6 +1141,7 @@ impl App {
             PaletteAction::CopyToml => self.copy_current_report(OutputFormat::Toml),
             PaletteAction::OpenBrowse => self.set_view(View::Browse),
             PaletteAction::OpenGrowth => self.set_view(View::Growth),
+            PaletteAction::SaveSnapshotBaseline => self.save_snapshot_baseline(),
             PaletteAction::OpenHistory => self.set_view(View::History),
             PaletteAction::Rescan => self.start_scan()?,
         }
@@ -1258,6 +1263,30 @@ impl App {
             }
             Err(error) => {
                 self.status_message = Some(format!("Finder reveal failed: {error}"));
+            }
+        }
+    }
+
+    fn save_snapshot_baseline(&mut self) {
+        let Some(snapshot) = self.live_snapshot.as_ref() else {
+            self.status_message = Some(String::from(
+                "A completed live scan is required before saving a baseline.",
+            ));
+            return;
+        };
+
+        let complete = snapshot.complete;
+        match save_snapshot(snapshot) {
+            Ok(path) => {
+                self.reload_growth();
+                let qualifier = if complete { "complete" } else { "incomplete" };
+                self.status_message = Some(format!(
+                    "Saved {qualifier} snapshot baseline to {}.",
+                    display_path(&path)
+                ));
+            }
+            Err(error) => {
+                self.status_message = Some(format!("Snapshot save failed: {error}"));
             }
         }
     }

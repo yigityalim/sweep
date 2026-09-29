@@ -1223,6 +1223,7 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
                 spans.extend(key("/", "search", theme));
             }
             View::Growth => {
+                spans.extend(key("b", "save baseline", theme));
                 spans.extend(key("R", "reload snapshots", theme));
             }
             View::History => {
@@ -1270,6 +1271,9 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &App, theme: Theme) {
             "{marker} 1 candidates   2 browse   3 growth   4 history"
         )),
         Line::from(format!("{marker} tab                 next view")),
+        Line::from(format!(
+            "{marker} b in growth         save live snapshot baseline"
+        )),
         Line::from(""),
         section("CANDIDATES", theme),
         Line::from(format!("{marker} j / k / arrows      move selection")),

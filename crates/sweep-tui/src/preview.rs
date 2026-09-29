@@ -101,6 +101,25 @@ pub(crate) fn save_report(report: &Report, format: OutputFormat) -> io::Result<P
     Ok(output)
 }
 
+pub(crate) fn save_snapshot(snapshot: &Snapshot) -> io::Result<PathBuf> {
+    snapshot.validate().map_err(io::Error::other)?;
+    let json = serde_json::to_string_pretty(snapshot).map_err(io::Error::other)?;
+    let home = env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+    let directory = home
+        .join("Library")
+        .join("Application Support")
+        .join("Sweep")
+        .join("snapshots");
+    fs::create_dir_all(&directory)?;
+
+    let stem = format!("sweep-snapshot-{}", snapshot.created_unix_seconds);
+    let output = unique_path(&directory, &stem, "sweep.json");
+    atomic_write(&output, json.as_bytes())?;
+    Ok(output)
+}
+
 pub(crate) fn copy_report(report: &Report, format: OutputFormat) -> io::Result<()> {
     let rendered = render(report, format).map_err(io::Error::other)?;
     copy_to_clipboard(&rendered)
@@ -158,7 +177,9 @@ pub(crate) fn load_growth(root: &Path) -> io::Result<GrowthData> {
             snapshot_count: 0,
             invalid_snapshot_count: 0,
             live_comparison: false,
-            message: String::from("No snapshots yet. Run sw snapshot for this scope twice."),
+            message: String::from(
+                "No snapshots yet. Save a baseline from Growth or run sw snapshot.",
+            ),
         });
     }
 
@@ -218,7 +239,9 @@ pub(crate) fn load_growth_against_current(
             snapshot_count: 0,
             invalid_snapshot_count: 0,
             live_comparison: true,
-            message: String::from("No snapshot baseline yet. Run sw snapshot for this scope."),
+            message: String::from(
+                "No snapshot baseline yet. Press b in Growth to save the live scan.",
+            ),
         });
     }
 
@@ -368,6 +391,28 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn snapshot_compound_extension_keeps_numeric_suffix_before_extension() {
+        let base = env::temp_dir().join(format!(
+            "sweep-snapshot-path-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&base).unwrap();
+        let first = base.join("sweep-snapshot-42.sweep.json");
+        fs::write(&first, b"existing").unwrap();
+
+        assert_eq!(
+            unique_path(&base, "sweep-snapshot-42", "sweep.json"),
+            base.join("sweep-snapshot-42-1.sweep.json")
+        );
+
+        fs::remove_dir_all(base).unwrap();
+    }
 
     #[test]
     fn unique_path_does_not_clobber_existing_file() {
