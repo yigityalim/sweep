@@ -28,7 +28,8 @@ Observation layer:
 - provider engine;
 - Git ownership checks;
 - size accounting;
-- no-follow traversal.
+- no-follow traversal;
+- exact immutable-plan revalidation without discovery.
 
 It returns `Candidate` values and never mutates candidate paths.
 
@@ -54,6 +55,7 @@ Presentation and command routing:
 - `explain`;
 - `report`;
 - `plan`;
+- `revalidate`;
 - `doctor`.
 
 It contains no cleanup logic.
@@ -144,9 +146,11 @@ A plan stores:
 - recovery contract;
 - filesystem identity.
 
-A future apply operation will reject a candidate when either its root identity or its subtree metadata fingerprint no longer matches the plan.
+Plan validation now rejects non-safe candidates, paths outside the declared root, duplicate targets, incomplete traversal, missing identity, missing subtree fingerprints, and missing recovery contracts.
 
-This closes the common "scan one object, delete another object later at the same path" class of race.
+Read-only revalidation checks exactly the plan candidates and does not run discovery. It verifies that the current physical parent remains under the plan root, rejects symlink replacement, compares the current filesystem identity, and recomputes the subtree metadata fingerprint. A future apply operation may proceed only from an unchanged result; changed, missing, or unverifiable candidates must be skipped.
+
+This closes the common "scan one object, delete another object later at the same path" class of race before mutation exists.
 
 
 ## Report and interaction model
