@@ -143,7 +143,9 @@ fn revalidate_candidate(root: &Path, candidate: &Candidate) -> CandidateRevalida
     result.observed_subtree_fingerprint = measured.subtree_metadata_fingerprint.clone();
 
     if !measured.traversal_complete {
-        result.status = RevalidationStatus::Unverifiable;
+        if result.status == RevalidationStatus::Unchanged {
+            result.status = RevalidationStatus::Unverifiable;
+        }
         result
             .reasons
             .push(RevalidationReason::TraversalIncomplete);
@@ -151,7 +153,9 @@ fn revalidate_candidate(root: &Path, candidate: &Candidate) -> CandidateRevalida
     }
 
     let Some(observed_fingerprint) = measured.subtree_metadata_fingerprint.as_deref() else {
-        result.status = RevalidationStatus::Unverifiable;
+        if result.status == RevalidationStatus::Unchanged {
+            result.status = RevalidationStatus::Unverifiable;
+        }
         result
             .reasons
             .push(RevalidationReason::FingerprintUnavailable);
@@ -170,6 +174,10 @@ fn revalidate_candidate(root: &Path, candidate: &Candidate) -> CandidateRevalida
 
 fn physical_parent_within_root(root: &Path, candidate: &Path) -> io::Result<bool> {
     let root = fs::canonicalize(root)?;
+    if candidate == root {
+        return Ok(true);
+    }
+
     let parent = candidate
         .parent()
         .ok_or_else(|| io::Error::other("candidate has no parent directory"))?;
