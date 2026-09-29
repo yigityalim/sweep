@@ -43,18 +43,22 @@ TachyonFX effects run after widgets render and are treated as presentation only.
 
 Sweep should look like a serious developer instrument rather than a generic cleaner.
 
-The default palette is low-luminance graphite with restrained semantic color:
+The default palette is low-luminance graphite with restrained semantic color. It is designed to sit naturally inside dark Ghostty-style terminal themes without depending on terminal palette indexes:
 
 ```text
-background   near-black graphite
-surface      elevated slate
-accent       cool blue
-safe         green
-review       amber
-protected    red
-text         cool near-white
-muted        blue-gray
+background      #101214
+surface         #151719
+selection       #2B2D30
+foreground      #D7DBE0
+bright text     #F0F2F4
+muted           #6F767E
+accent          #8EA4C7
+safe            #83A98C
+review          #D5B26E
+protected       #D47777
 ```
+
+The terminal owns font family, font shaping, opacity, blur, cursor rendering, and window chrome. Sweep only owns cell foreground/background/style. A JetBrains Mono Nerd Font setup therefore works well, but Sweep does not require or attempt to configure it.
 
 Semantic color is redundant with text labels. `NO_COLOR=1` disables the palette. `SWEEP_ASCII=1` replaces Unicode navigation and status marks with ASCII-compatible alternatives.
 
@@ -150,7 +154,7 @@ A scan failure is rendered in-place. A discovery-incomplete scan remains visible
 
 Minimum supported interactive viewport is 74x18.
 
-- width >= 112: table + persistent evidence inspector;
+- width >= 124: table + persistent 48-column evidence inspector;
 - narrower: full-width table, inspect overlay on demand;
 - below minimum: explicit resize message rather than broken layout.
 
